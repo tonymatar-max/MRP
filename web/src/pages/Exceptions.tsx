@@ -4,7 +4,7 @@ import { useNewExceptions, useRun } from '../api/hooks';
 import type { ExceptionMessage, ExceptionType } from '../api/types';
 import { Empty, ErrorState, ExceptionPill, Loading, PageHeader, Pill } from '../components/ui';
 import { RunPicker } from '../components/RunPicker';
-import { AskAiButton } from '../components/AiAssistant';
+import { AskAiButton, ExplainButton, TriageButton } from '../components/AiAssistant';
 import { useSelectedRun } from '../components/RunContext';
 import { useAuth } from '../components/Auth';
 import { ExecuteDialog } from '../components/ExecuteDialog';
@@ -53,7 +53,7 @@ export default function Exceptions() {
 
   return (
     <>
-      <PageHeader crumb="Planning" title="Exceptions" actions={<><RunPicker /><AskAiButton /></>} />
+      <PageHeader crumb="Planning" title="Exceptions" actions={<><RunPicker /><TriageButton /><AskAiButton /></>} />
       <div className="page">
         {run.data && all.length > 0 && (
           <div className="toolbar" role="group" aria-label="Filter exceptions by status"><div className="seg">
@@ -88,6 +88,8 @@ export default function Exceptions() {
                         <td>{e.plannedOrderId ? <Link to={`/planned-orders?focus=${encodeURIComponent(e.plannedOrderId)}`}>View order →</Link> : '—'}</td>
                         <td>
                           <ActionCell e={e} isAdmin={isAdmin} onExecute={setExecuting} />
+                          <ExplainButton label={`${EXCEPTION_META[e.type].label} for ${e.itemCode}`}
+                            question={`Explain this ${EXCEPTION_META[e.type].label} exception for item ${e.itemCode}${e.warehouseCode ? ` in warehouse ${e.warehouseCode}` : ''} (${e.message}). Why does it happen, what demand or supply is behind it, and what do you suggest I do?`} />
                           {!isDone(e) && !e.actions?.length && (t === 'PastDue' || t === 'CapacityOverload' || t === 'NotPlanned') && (
                             <div className="muted" style={{ fontSize: 12 }}>No automatic action: review the item</div>
                           )}

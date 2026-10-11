@@ -64,3 +64,6 @@
 .model-hits { list-style: none; margin: 6px 0 0; padding: 4px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); box-shadow: var(--shadow); max-height: 220px; overflow: auto; }
 .model-hits button { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 6px 8px; border-radius: var(--radius-sm); font-family: ui-monospace, Consolas, monospace; font-size: 12px; cursor: pointer; color: var(--ink); }
 .model-hits button:hover, .model-hits button:focus-visible { background: var(--accent-soft); }
+
+.ai-explain { margin-left: 6px; }
+.ai-explain svg.i { width: 13px; height: 13px; }

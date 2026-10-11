@@ -7,7 +7,7 @@ import type { PlannedOrder, ReleaseResult } from '../api/types';
 import { Dialog, ErrorState, Llc, Loading, PageHeader, Pill } from '../components/ui';
 import { useAuth } from '../components/Auth';
 import { RunPicker } from '../components/RunPicker';
-import { AskAiButton } from '../components/AiAssistant';
+import { AskAiButton, ExplainButton } from '../components/AiAssistant';
 import { useSelectedRun } from '../components/RunContext';
 import { fmtDate, fmtNum, isPast, ORDER_TYPES, orderTypeLabel, orderTypeTag, sortBy, SortDir } from '../components/util';
 
@@ -167,7 +167,11 @@ export default function PlannedOrders() {
                         <td className="num">{fmtNum(o.quantity)}</td>
                         <td style={isPast(o.releaseDate) ? { color: 'var(--danger)', fontWeight: 600 } : undefined}>{fmtDate(o.releaseDate)}</td>
                         <td>{fmtDate(o.dueDate)}</td>
-                        <td>{o.firmed ? <Pill tone="ok">Firmed{o.b1DocEntry ? ` · ${o.b1DocEntry}` : ''}</Pill> : <Pill>Planned</Pill>}</td>
+                        <td>
+                          {o.firmed ? <Pill tone="ok">Firmed{o.b1DocEntry ? ` · ${o.b1DocEntry}` : ''}</Pill> : <Pill>Planned</Pill>}
+                          <ExplainButton label={`${o.itemCode} ${orderTypeLabel(o.type)}`}
+                            question={`Why was this planned order created? Planned order id ${o.id}: ${orderTypeLabel(o.type)} for item ${o.itemCode}, quantity ${fmtNum(o.quantity)}, warehouse ${o.warehouseCode}, due ${o.dueDate}. Show which demand it covers, how its quantity and dates were set (lead time, lot sizing), and anything I should double-check before releasing it.`} />
+                        </td>
                       </tr>
                       {open === o.id && (
                         <tr className="expand-row"><td colSpan={11}><Pegging runId={runId!} id={o.id} /></td></tr>

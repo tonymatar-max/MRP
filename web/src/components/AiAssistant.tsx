@@ -103,6 +103,41 @@ export function AskAiButton() {
   );
 }
 
+/** True when AI is on and has a key (the same condition that shows "Ask AI"). */
+function useAiReady() {
+  const status = useAiStatus().data;
+  return !!status && status.enabled && status.configured;
+}
+
+/** A small "Explain" button for a table row: opens the drawer and asks the assistant about that one row. */
+export function ExplainButton({ question, label }: { question: string; label: string }) {
+  const ready = useAiReady();
+  const panel = useAiPanel();
+  if (!ready) return null;
+  return (
+    <button
+      type="button" className="btn ghost sm ai-explain" disabled={panel.busy} title="Ask the AI assistant to explain this" aria-label={`Explain: ${label}`}
+      onClick={(e) => { e.stopPropagation(); panel.setOpen(true); void panel.ask(question); }}
+    >
+      <Spark /> Explain
+    </button>
+  );
+}
+
+/** One click: ask the assistant to rank the open exceptions of the selected run. It only suggests; the planner clicks Execute. */
+export function TriageButton() {
+  const ready = useAiReady();
+  const panel = useAiPanel();
+  if (!ready) return null;
+  const q = 'Triage the open exceptions of this run. List the 5 I should deal with first, most urgent first. For each give the item code, the exception type, why it matters (what demand or capacity it affects, with dates and quantities) and the action you suggest. Then say in one line what can wait.';
+  return (
+    <button type="button" className="btn sm ai-btn" disabled={panel.busy} title="Ask the AI assistant which exceptions to handle first"
+      onClick={() => { panel.setOpen(true); void panel.ask(q); }}>
+      <Spark /> Triage
+    </button>
+  );
+}
+
 function copyText(text: string) {
   const fallback = () => {
     const ta = document.createElement('textarea');
