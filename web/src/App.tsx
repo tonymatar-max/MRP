@@ -6,6 +6,7 @@ import { AuthGate, useAuth } from './components/Auth';
 import { RunProvider, useSelectedRun } from './components/RunContext';
 import { AiDrawer, AiPanelProvider } from './components/AiAssistant';
 import { BrandMark } from './components/ui';
+import { ThemeToggle } from './components/theme';
 import Calendar from './pages/Calendar';
 import Capacity from './pages/Capacity';
 import Dashboard from './pages/Dashboard';
@@ -95,6 +96,7 @@ function Shell() {
           </div>
           <div className="spacer" />
           <span className={`env-chip ${USE_MOCK ? 'mock' : ''}`}><span className="led" />{USE_MOCK ? 'Mock data' : 'Live API'}</span>
+          <ThemeToggle />
           <div className="user-btn">
             <div className="avatar" aria-hidden="true">{user.username.slice(0, 1).toUpperCase()}</div>
             <div className="who"><b>{user.username}</b><small>{user.role}</small></div>

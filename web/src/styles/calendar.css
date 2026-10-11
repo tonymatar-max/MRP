@@ -21,7 +21,7 @@
 }
 .kchip { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 18px; padding: 0 5px; border-radius: 9px; font-size: 11px; font-weight: 700; color: var(--white); line-height: 1; }
 .kchip.k-Demand { background: var(--k-Demand); }
-.kchip.k-Forecast { background: var(--white); color: var(--accent); border: 1.5px dashed var(--k-Forecast); }
+.kchip.k-Forecast { background: var(--surface); color: var(--accent); border: 1.5px dashed var(--k-Forecast); }
 .kchip.k-Supply { background: var(--k-Supply); }
 .kchip.k-PlannedRelease { background: var(--k-PlannedRelease); }
 .kchip.k-PlannedDue { background: var(--k-PlannedDue); }
