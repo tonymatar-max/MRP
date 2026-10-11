@@ -18,6 +18,7 @@ public sealed class CobaltMrpDbContext : DbContext
     public DbSet<CalendarEvent> CalendarEvents => Set<CalendarEvent>();
     public DbSet<ItemOverride> ItemOverrides => Set<ItemOverride>();
     public DbSet<SupplierSetting> SupplierSettings => Set<SupplierSetting>();
+    public DbSet<SapPushLogEntry> SapPushLog => Set<SapPushLogEntry>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -112,6 +113,22 @@ public sealed class CobaltMrpDbContext : DbContext
             e.Property(x => x.Notes).HasMaxLength(1000);
             e.Property(x => x.UpdatedBy).HasMaxLength(100);
             e.Ignore(x => x.IsEmpty);
+        });
+
+        // Every write to SAP B1, kept for good (who, when, what, outcome).
+        b.Entity<SapPushLogEntry>(e =>
+        {
+            e.ToTable("SapPushLog");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.UserName).HasMaxLength(100);
+            e.Property(x => x.Action).HasMaxLength(40);
+            e.Property(x => x.ItemCode).HasMaxLength(50);
+            e.Property(x => x.WarehouseCode).HasMaxLength(8);
+            e.Property(x => x.Quantity).HasPrecision(19, 6);
+            e.Property(x => x.Target).HasMaxLength(100);
+            e.Property(x => x.Summary).HasMaxLength(500);
+            e.Property(x => x.Error).HasMaxLength(4000);
+            e.HasIndex(x => x.At);
         });
 
         b.Entity<CalendarEvent>(e =>

@@ -194,14 +194,14 @@ public static class RunEndpoints
         // Firm the selected planned orders and, when Service Layer write-back is enabled, create the
         // purchase/production orders in SAP B1. State (firmed, B1DocEntry) is persisted either way.
         api.MapPost("/runs/{id:guid}/release", async (Guid id, ReleaseRequest? req, IRunStore store,
-            SettingsService settings, ReleaseService release, CancellationToken ct) =>
+            SettingsService settings, ReleaseService release, ISapPushLog pushLog, HttpContext ctx, CancellationToken ct) =>
         {
             if (req?.PlannedOrderIds is null) return Results.BadRequest(new { message = "plannedOrderIds is required." });
             var run = await store.GetAsync(id, ct);
             if (run is null) return Results.NotFound();
             var ids = req.PlannedOrderIds.ToHashSet();
             var selected = run.PlannedOrders.Where(o => ids.Contains(o.Id)).ToList();
-            var outcome = await release.ReleaseAsync(store, selected, ct);
+            var outcome = await release.ReleaseAsync(store, selected, ct, new PushContext(pushLog, ctx.User.Identity?.Name ?? "", id));
             var sl = settings.Get().ServiceLayer;
             return Results.Ok(new
             {
@@ -223,14 +223,14 @@ public static class RunEndpoints
         }).RequireAuthorization("Admin");
 
         api.MapPost("/runs/{id:guid}/exceptions/{exId:guid}/execute", async (Guid id, Guid exId, ExecuteRequest req, HttpContext ctx,
-            IRunStore store, ExceptionExecutor executor, ILogger<ExceptionExecutor> log, CancellationToken ct) =>
+            IRunStore store, ExceptionExecutor executor, ISapPushLog pushLog, ILogger<ExceptionExecutor> log, CancellationToken ct) =>
         {
             var (run, ex) = await Find(store, id, exId, ct);
             if (ex is null) return Results.NotFound(new { message = "Exception not found." });
             var user = ctx.User.Identity?.Name ?? "";
             try
             {
-                var result = await executor.ExecuteAsync(store, run!, ex, req, user, ct);
+                var result = await executor.ExecuteAsync(store, run!, ex, req, user, pushLog, ct);
                 log.LogInformation("Exception {Id} executed by {User}: {Message}", exId, user, result.Message);
                 return Results.Ok(result);
             }
@@ -240,6 +240,11 @@ public static class RunEndpoints
                 return Results.Json(new { message = e.Message }, statusCode: e.Status);
             }
         }).RequireAuthorization("Admin");
+
+        // Every write to SAP B1 (release, move date, close), newest first. Read-only; Admin and Planner.
+        api.MapGet("/sap-log", async (bool? success, string? action, string? item, string? user, DateTimeOffset? from, DateTimeOffset? to,
+            int? limit, ISapPushLog pushLog, CancellationToken ct) =>
+            await pushLog.QueryAsync(new SapPushLogQuery(success, action, item, user, from, to, limit ?? 200), ct));
     }
 }
 

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
 import type {
   AppSettings, BulkItemRequest, CalendarQuery, DataSource, Forecast, MasterItemQuery, MasterOverride, MasterSupplierQuery, NewUser,
-  RunCriteria, PreviewDetailsRequest, TriggerRunRequest, ExecuteRequest, ExecutePayload,
+  RunCriteria, SapLogQuery, PreviewDetailsRequest, TriggerRunRequest, ExecuteRequest, ExecutePayload,
 } from './types';
 
 export function useRuns() {
@@ -32,6 +32,7 @@ export function useReleaseOrders(runId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['run', runId] });
       qc.invalidateQueries({ queryKey: ['runs'] });
+      qc.invalidateQueries({ queryKey: ['sap-log'] });
     },
   });
 }
@@ -210,4 +211,9 @@ export function usePreviewDetailsExport() {
 // ---------- AI assistant ----------
 export function useAiStatus() {
   return useQuery({ queryKey: ['ai-status'], queryFn: api.getAiStatus, staleTime: 30_000, retry: false });
+}
+
+/** The log of writes to SAP B1. Always fresh: it changes whenever someone releases or executes. */
+export function useSapLog(q: SapLogQuery) {
+  return useQuery({ queryKey: ['sap-log', q], queryFn: () => api.listSapLog(q), staleTime: 0 });
 }

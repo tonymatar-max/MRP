@@ -425,3 +425,17 @@ export interface MasterSupplierQuery {
   source: DataSource; search?: string; filter?: 'all' | 'withLeadTime' | 'withoutLeadTime' | 'inUse'; page?: number; pageSize?: number;
 }
 export interface MasterSupplierPage { total: number; page: number; pageSize: number; suppliers: MasterSupplierRow[] }
+
+// ----- log of writes to SAP B1 -----
+export type SapPushAction =
+  | 'CreatePurchaseOrder' | 'CreatePurchaseRequest' | 'CreateTransferRequest' | 'CreateProductionOrder'
+  | 'MoveDueDate' | 'CloseDocument' | 'Session';
+export interface SapLogEntry {
+  id: string; at: string; userName: string; action: SapPushAction; success: boolean;
+  runId?: string | null; plannedOrderId?: string | null; exceptionId?: string | null;
+  itemCode?: string | null; warehouseCode?: string | null; quantity?: number | null;
+  target?: string | null; summary: string; error?: string | null;
+}
+export interface SapLogQuery {
+  success?: boolean; action?: SapPushAction | ''; item?: string; user?: string; from?: string; to?: string; limit?: number;
+}

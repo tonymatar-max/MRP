@@ -13,6 +13,7 @@ import Exceptions from './pages/Exceptions';
 import Forecasts from './pages/Forecasts';
 import MasterData from './pages/MasterData';
 import PlannedOrders from './pages/PlannedOrders';
+import SapLog from './pages/SapLog';
 import Settings from './pages/Settings';
 
 const NAV: { to: string; label: string; end?: boolean; adminOnly?: boolean; group: string }[] = [
@@ -23,6 +24,7 @@ const NAV: { to: string; label: string; end?: boolean; adminOnly?: boolean; grou
   { to: '/calendar', label: 'Calendar', group: 'Planning' },
   { to: '/master-data', label: 'Master data', group: 'Data' },
   { to: '/forecasts', label: 'Forecasts', group: 'Data' },
+  { to: '/sap-log', label: 'SAP push log', group: 'Data' },
   { to: '/settings', label: 'Settings', adminOnly: true, group: 'Configuration' },
 ];
 
@@ -110,6 +112,7 @@ function Shell() {
             <Route path="/calendar" element={<Calendar />} />
             <Route path="/master-data" element={<MasterData />} />
             <Route path="/forecasts" element={<Forecasts />} />
+            <Route path="/sap-log" element={<SapLog />} />
             <Route path="/settings" element={isAdmin ? <Settings /> : <Navigate to="/" replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

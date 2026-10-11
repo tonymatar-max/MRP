@@ -59,6 +59,11 @@ builder.Services.AddScoped<IMasterStore>(sp =>
     sp.GetRequiredService<SettingsService>().Get().CobaltDb.IsConfigured
         ? new SqlMasterStore(sp.GetRequiredService<CobaltMrpDbContext>())
         : sp.GetRequiredService<MemoryMasterStore>());
+builder.Services.AddSingleton<MemorySapPushLog>();
+builder.Services.AddScoped<ISapPushLog>(sp =>
+    sp.GetRequiredService<SettingsService>().Get().CobaltDb.IsConfigured
+        ? new SqlSapPushLog(sp.GetRequiredService<CobaltMrpDbContext>())
+        : sp.GetRequiredService<MemorySapPushLog>());
 builder.Services.AddScoped<RunPlanner>();
 builder.Services.AddSingleton<ReleaseService>();
 builder.Services.AddSingleton<ExceptionExecutor>();

@@ -48,7 +48,8 @@ public sealed class ExceptionExecutor
 
     private readonly SettingsService _settings;
     private readonly ReleaseService _release;
-    public ExceptionExecutor(SettingsService settings, ReleaseService release) { _settings = settings; _release = release; }
+    private readonly ILogger<ExceptionExecutor> _log;
+    public ExceptionExecutor(SettingsService settings, ReleaseService release, ILogger<ExceptionExecutor> log) { _settings = settings; _release = release; _log = log; }
 
     // ---- What can be done -------------------------------------------------------------------------------------
 
@@ -115,8 +116,9 @@ public sealed class ExceptionExecutor
         _ => "production order",
     };
 
-    public async Task<ExecuteResult> ExecuteAsync(IRunStore store, MrpRun run, ExceptionMessage e, ExecuteRequest req, string user, CancellationToken ct)
+    public async Task<ExecuteResult> ExecuteAsync(IRunStore store, MrpRun run, ExceptionMessage e, ExecuteRequest req, string user, ISapPushLog pushLog, CancellationToken ct)
     {
+        var push = new PushContext(pushLog, user, run.Id, e.ExceptionId);
         var action = Validate(run, e, req, requireConfirm: true);
         var ev = await EvaluateAsync(run, e, action, req.NewDate, ct);
         if (ev.Conflict) throw new ExecuteException(409, ev.Blockers.FirstOrDefault() ?? "The document changed in SAP B1 since the plan. Re-run MRP.");
@@ -126,13 +128,13 @@ public sealed class ExceptionExecutor
         switch (action)
         {
             case ExecuteActions.ReleaseOrder:
-                var outcome = await _release.ReleaseAsync(store, new[] { ev.Order! }, ct);
+                var outcome = await _release.ReleaseAsync(store, new[] { ev.Order! }, ct, push);
                 if (outcome.Failures.Count > 0) throw new ExecuteException(502, outcome.Failures[0].Error);
                 if (outcome.Pushed != 1) throw new ExecuteException(502, "The order was not created in SAP B1.");
                 message = $"Created {DocName(ev.Order!.Type)} in SAP B1 (document {ev.Order.B1DocEntry}).";
                 break;
             case ExecuteActions.MoveDueDate:
-                message = await WithSessionAsync(async client =>
+                message = await LoggedAsync(push, e, ev.Doc!, SapPushActions.MoveDueDate, $"Move due date to {req.NewDate:yyyy-MM-dd}", () => WithSessionAsync(async client =>
                 {
                     var doc = ev.Doc!; var date = req.NewDate!.Value;
                     if (doc.Kind == Kind.PurchaseOrder)
@@ -148,10 +150,10 @@ public sealed class ExceptionExecutor
                     return doc.Kind == Kind.PurchaseOrder
                         ? $"Purchase order {doc.DocEntry} line {e.SourceLine ?? 0} moved to {date:yyyy-MM-dd}."
                         : $"Production order {doc.DocEntry} moved to {date:yyyy-MM-dd}.";
-                }, ct);
+                }, ct));
                 break;
             case ExecuteActions.Close:
-                message = await WithSessionAsync(async client =>
+                message = await LoggedAsync(push, e, ev.Doc!, SapPushActions.CloseDocument, ev.Doc!.Kind == Kind.PurchaseOrder ? "Close purchase order" : "Cancel production order", () => WithSessionAsync(async client =>
                 {
                     var doc = ev.Doc!;
                     if (doc.Kind == Kind.PurchaseOrder)
@@ -161,7 +163,7 @@ public sealed class ExceptionExecutor
                     }
                     await client.PatchEntityAsync($"ProductionOrders({doc.DocEntry})", new { ProductionOrderStatus = "boposCancelled" }, ct);
                     return $"Production order {doc.DocEntry} cancelled.";
-                }, ct);
+                }, ct));
                 break;
             default:
                 throw new ExecuteException(400, $"Unknown action '{action}'.");
@@ -316,6 +318,30 @@ public sealed class ExceptionExecutor
         var partial = found && target.TryGetProperty("Quantity", out var q) && target.TryGetProperty("RemainingOpenQuantity", out var r)
                       && q.ValueKind == JsonValueKind.Number && r.ValueKind == JsonValueKind.Number && r.GetDecimal() < q.GetDecimal();
         return new Snapshot(found, docStatus is "bost_Open" && lineOpen, docStatus, found ? Date(target, "ShipDate") : null, openLines, partial);
+    }
+
+    /// <summary>Runs one change in SAP B1 and logs it either way (a failure is logged, then rethrown unchanged).</summary>
+    private async Task<string> LoggedAsync(PushContext push, ExceptionMessage e, DocRef doc, string action, string what, Func<Task<string>> work)
+    {
+        var entry = new SapPushLogEntry
+        {
+            Action = action, ItemCode = e.ItemCode, WarehouseCode = e.WarehouseCode, Quantity = e.Quantity,
+            Target = $"{(doc.Kind == Kind.PurchaseOrder ? "OPOR" : "OWOR")}:{doc.DocEntry}",
+            Summary = doc.Kind == Kind.PurchaseOrder && e.SourceLine is not null ? $"{what} (line {e.SourceLine})" : what,
+        };
+        try
+        {
+            var message = await work();
+            entry.Success = true; entry.Summary = message;
+            await SapPushRecorder.RecordAsync(push, _log, new[] { entry });
+            return message;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            entry.Success = false; entry.Error = ex.Message;
+            await SapPushRecorder.RecordAsync(push, _log, new[] { entry });
+            throw;
+        }
     }
 
     private static string? Str(JsonElement j, string name) =>

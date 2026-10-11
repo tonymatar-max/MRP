@@ -16,10 +16,11 @@ import type {
 } from './types';
 import * as mock from '../mocks/data';
 import * as adm from '../mocks/admin';
+import * as msl from '../mocks/saplog';
 import * as md from '../mocks/masterdata';
 import * as mex from '../mocks/exceptions';
 import * as mpd from '../mocks/previewDetails';
-import type { ExecutePayload, ExecutePreview, ExecuteRequest, ExecuteResult } from './types';
+import type { ExecutePayload, ExecutePreview, ExecuteRequest, ExecuteResult, SapLogEntry, SapLogQuery } from './types';
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string) || '/api';
 export const USE_MOCK =
@@ -343,6 +344,11 @@ export const api = {
       return fc;
     }
     return http<Forecast>('/forecasts', { method: 'POST', body: JSON.stringify(fc) });
+  },
+
+  async listSapLog(q: SapLogQuery): Promise<SapLogEntry[]> {
+    if (USE_MOCK) return mocked(() => msl.listSapLog(q), 300);
+    return http<SapLogEntry[]>(`/sap-log?${qs({ success: q.success === undefined ? undefined : String(q.success), action: q.action, item: q.item, user: q.user, from: q.from, to: q.to, limit: q.limit })}`);
   },
 };
 

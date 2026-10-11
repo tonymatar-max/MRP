@@ -12,7 +12,7 @@ namespace CobaltMrp.Api.Services;
 public static class CobaltSchema
 {
     public static readonly string[] Tables =
-        { "MrpRun", "PlannedOrder", "PeggingLink", "ExceptionMessage", "CapacityLoad", "Forecast", "CalendarEvent", "ItemPlanning", "SupplierPlanning" };
+        { "MrpRun", "PlannedOrder", "PeggingLink", "ExceptionMessage", "CapacityLoad", "Forecast", "CalendarEvent", "ItemPlanning", "SupplierPlanning", "SapPushLog" };
 
     public static async Task<string> EnsureAsync(string connectionString, CancellationToken ct = default)
     {
@@ -118,6 +118,29 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_ExceptionMessage_Excep
         // v6: transfer requests remember the sending warehouse.
         await db.Database.ExecuteSqlRawAsync(@"
 IF COL_LENGTH('dbo.PlannedOrder', 'FromWarehouse') IS NULL ALTER TABLE dbo.PlannedOrder ADD FromWarehouse NVARCHAR(8) NULL;", ct);
+
+        // v7: log of every write to SAP B1.
+        await db.Database.ExecuteSqlRawAsync(@"
+IF OBJECT_ID('dbo.SapPushLog') IS NULL
+BEGIN
+    CREATE TABLE dbo.SapPushLog (
+        Id             UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
+        [At]           DATETIMEOFFSET   NOT NULL,
+        UserName       NVARCHAR(100)    NOT NULL,
+        [Action]       NVARCHAR(40)     NOT NULL,
+        Success        BIT              NOT NULL,
+        RunId          UNIQUEIDENTIFIER NULL,
+        PlannedOrderId UNIQUEIDENTIFIER NULL,
+        ExceptionId    UNIQUEIDENTIFIER NULL,
+        ItemCode       NVARCHAR(50)     NULL,
+        WarehouseCode  NVARCHAR(8)      NULL,
+        Quantity       DECIMAL(19,6)    NULL,
+        Target         NVARCHAR(100)    NULL,
+        Summary        NVARCHAR(500)    NOT NULL,
+        Error          NVARCHAR(4000)   NULL
+    );
+    CREATE INDEX IX_SapPushLog_At ON dbo.SapPushLog ([At]);
+END", ct);
     }
 
     public static async Task<int> CountTablesAsync(string connectionString, CancellationToken ct)
