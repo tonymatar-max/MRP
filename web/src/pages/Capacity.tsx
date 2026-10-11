@@ -22,7 +22,32 @@ export default function Capacity() {
       <div className="page">
         {run.isLoading && <Loading />}
         {run.isError && <ErrorState error={run.error} />}
-        {run.data && (
+        {run.data && loads.length === 0 && (
+          <div className="card">
+            <div className="card-b">
+              <h3 style={{ marginBottom: 8 }}>No capacity load in this run</h3>
+              <p className="muted" style={{ marginBottom: 10 }}>
+                Capacity settings only say how many hours a work center <em>has</em>. The hours it <em>needs</em> come from planned production orders whose bill of materials has resource lines.
+                Settings changes also only apply to runs made after you save them.
+              </p>
+              <ul className="muted" style={{ paddingInlineStart: 20, margin: 0, display: 'grid', gap: 4 }}>
+                <li>
+                  Capacity planning in this run: <strong>{run.data.criteria?.capacity?.enabled === false ? 'off (turn it on in the Run MRP wizard, step 4)' : 'on'}</strong>
+                </li>
+                <li>
+                  Planned production orders in this run: <strong>{run.data.plannedOrders.filter((o) => o.type === 'ProductionOrder').length}</strong>
+                  {run.data.plannedOrders.some((o) => o.type === 'ProductionOrder') ? '' : ' (no manufactured item needed a new order, so there is nothing to load)'}
+                </li>
+                <li>
+                  In SAP B1, open the Production BOM of each manufactured item and add a <strong>Resource</strong> line with its time. Items without one put no load on any work center.
+                </li>
+                <li>The resource code on the BOM line must exist in the SAP B1 resource master.</li>
+                <li>After fixing any of this, run MRP again.</li>
+              </ul>
+            </div>
+          </div>
+        )}
+        {run.data && loads.length > 0 && (
           <>
             <div className="chips" style={{ marginBottom: 14 }}>
               {wcs.map((w) => {
@@ -65,8 +90,8 @@ export default function Capacity() {
                         <td>{fmtDate(r.bucketStart)}</td>
                         <td className="num">{fmtNum(r.requiredHours)}</td>
                         <td className="num">{fmtNum(r.availableHours)}</td>
-                        <td className="num">{Math.round((r.requiredHours / r.availableHours) * 100)}%</td>
-                        <td>{r.overloaded ? <Pill tone="danger">Overloaded</Pill> : <Pill tone="ok">OK</Pill>}</td>
+                        <td className="num">{r.availableHours > 0 ? `${Math.round((r.requiredHours / r.availableHours) * 100)}%` : '—'}</td>
+                        <td>{r.availableHours <= 0 ? <Pill tone="danger">No capacity set</Pill> : r.overloaded ? <Pill tone="danger">Overloaded</Pill> : <Pill tone="ok">OK</Pill>}</td>
                       </tr>
                     ))}
                   </tbody>
