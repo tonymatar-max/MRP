@@ -154,6 +154,8 @@ export interface ReleaseResult {
   /** Present when the API reports Service Layer write-back status. */
   writebackEnabled?: boolean;
   pushedToB1?: number;
+  /** SAP B1 documents created (several planned orders can share one). */
+  documentsCreated?: number;
   failures?: { plannedOrderId: string | null; error: string }[];
   plannedOrders: PlannedOrder[];
 }
@@ -229,6 +231,7 @@ export interface PlanningSettings {
   resources: ResourceOverride[];
   defaultLevel: PlanningLevel;
   purchaseDocument: PurchaseDocument;
+  documentGrouping: DocumentGrouping;
   transferLeadTimeDays: number;
 }
 
@@ -324,11 +327,13 @@ export type Procurement = 'Both' | 'Buy' | 'Make';
 export type PlanningMethod = 'Mrp' | 'ReorderPoint' | 'MinMax';
 export type PlanningLevel = 'Warehouse' | 'Company';
 export type PurchaseDocument = 'Order' | 'Request';
+/** On release: one SAP B1 document per order, or several lines on one document per supplier (and due date). */
+export type DocumentGrouping = 'None' | 'Supplier' | 'SupplierAndDate';
 
 export interface RunCriteria {
   source: DataSource;
   level: PlanningLevel;
-  purchasing: { document: PurchaseDocument };
+  purchasing: { document: PurchaseDocument; grouping: DocumentGrouping };
   /** Warehouse level only; sourceWarehouses empty = every selected warehouse. */
   transfers: { enabled: boolean; sourceWarehouses: string[]; leadTimeDays: number };
   scope: {

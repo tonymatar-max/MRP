@@ -97,6 +97,7 @@ public sealed class SettingsService
         m.Planning.DefaultLeadTimeDays = Math.Clamp(m.Planning.DefaultLeadTimeDays, 0, 3650);
         if (m.Planning.DefaultLevel is not ("Warehouse" or "Company")) m.Planning.DefaultLevel = "Warehouse";
         if (m.Planning.PurchaseDocument is not ("Order" or "Request")) m.Planning.PurchaseDocument = "Order";
+        if (m.Planning.DocumentGrouping is not ("None" or "Supplier" or "SupplierAndDate")) m.Planning.DocumentGrouping = "Supplier";
         m.Planning.TransferLeadTimeDays = Math.Clamp(m.Planning.TransferLeadTimeDays, 0, 90);
         // Priority: valid names, once each, and always all three (missing ones appended in the default order).
         var pri = new List<string>();

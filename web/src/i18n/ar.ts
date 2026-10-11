@@ -132,6 +132,17 @@ export const AR: Record<string, string> = {
   '{qty} needed {date}': 'مطلوب {qty} بتاريخ {date}',
   'parent {item}': 'الصنف الأب {item}',
 
+  // grouping of planned orders into documents
+  'Group by document': 'تجميع حسب المستند',
+  'Show the orders that will share one SAP B1 document together': 'عرض الأوامر التي ستشترك في مستند SAP B1 واحد معًا',
+  '{n} selected → {d} document(s)': '{n} محدد ← {d} مستند',
+  'Released {n} order(s) in {d} SAP B1 document(s).': 'تم إصدار {n} أمر في {d} مستند SAP B1.',
+  'Select all {n} lines of this document': 'تحديد كل بنود هذا المستند ({n})',
+  '{n} lines': '{n} بنود',
+  '{k} of {n} selected': 'تم تحديد {k} من {n}',
+  'one SAP B1 document': 'مستند SAP B1 واحد',
+  'any supplier': 'أي مورّد',
+
   // SAP push log
   'Export CSV': 'تصدير CSV',
   'Every time Cobalt MRP writes to SAP Business One (release a planned order, move a due date, close a document) it is recorded here, whether it worked or not. Passwords and request bodies are never stored.': 'في كل مرة يكتب فيها Cobalt MRP إلى SAP Business One (إصدار أمر مخطط، نقل تاريخ استحقاق، إغلاق مستند) يُسجَّل ذلك هنا، سواء نجح أم لا. لا تُحفظ كلمات المرور ولا محتوى الطلبات.',

@@ -66,3 +66,22 @@ export function sortBy<T>(rows: T[], key: keyof T, dir: SortDir): T[] {
   });
   return copy;
 }
+
+/**
+ * Which planned orders share one SAP B1 document when released: the same rule the server applies.
+ * Returns null for an order that always gets its own document (production orders, no supplier, grouping off).
+ */
+export function documentKey(
+  o: { type: string; vendorCode?: string | null; fromWarehouse?: string | null; warehouseCode: string; dueDate: string },
+  grouping: 'None' | 'Supplier' | 'SupplierAndDate',
+): string | null {
+  if (grouping === 'None') return null;
+  const date = grouping === 'SupplierAndDate' ? o.dueDate : '';
+  const vendor = (o.vendorCode ?? '').trim().toUpperCase();
+  switch (o.type) {
+    case 'PurchaseOrder': return vendor ? `PO|${vendor}|${date}` : null;
+    case 'PurchaseRequest': return `PR|${vendor}|${date}`;
+    case 'TransferRequest': return o.fromWarehouse ? `TR|${o.fromWarehouse.toUpperCase()}|${o.warehouseCode.toUpperCase()}|${o.dueDate}` : null;
+    default: return null;
+  }
+}

@@ -1,3 +1,4 @@
+import { documentKey } from '../components/util';
 import type {
   CapacityLoad,
   ExceptionMessage,
@@ -357,14 +358,23 @@ export function releaseOrders(runId: string, ids: string[]) {
   if (!detail) return { released: 0, plannedOrders: [] };
   let docEntry = 14000;
   const released: PlannedOrder[] = [];
+  const grouping = detail.criteria?.purchasing?.grouping ?? 'Supplier';
+  const byKey = new Map<string, number>();
+  const docs = new Set<number>();
   for (const po of detail.plannedOrders) {
     if (ids.includes(po.id)) {
       po.firmed = true;
-      po.b1DocEntry = po.b1DocEntry ?? docEntry++;
+      if (!po.b1DocEntry) {
+        // Same rule as the server: orders with the same key share one document.
+        const key = documentKey(po, grouping);
+        if (key && byKey.has(key)) po.b1DocEntry = byKey.get(key);
+        else { po.b1DocEntry = docEntry++; if (key) byKey.set(key, po.b1DocEntry); }
+      }
+      docs.add(po.b1DocEntry as number);
       released.push(po);
     }
   }
-  return { released: released.length, plannedOrders: released };
+  return { released: released.length, documentsCreated: docs.size, plannedOrders: released };
 }
 
 export const forecasts: Forecast[] = (() => {

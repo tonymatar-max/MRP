@@ -418,3 +418,9 @@ tr.expand-row td { background: var(--page); white-space: normal; }
 }
 
 .theme-toggle { min-width: 34px; padding: 0 8px; }
+
+/* Planned orders grouped by the SAP B1 document they will become */
+.group-row td { background: var(--section); border-top: 1px solid var(--line-strong); }
+tr.in-group td:first-child { box-shadow: inset 3px 0 0 var(--accent-line); }
+[dir="rtl"] tr.in-group td:first-child { box-shadow: inset -3px 0 0 var(--accent-line); }
+.check-inline { display: inline-flex; align-items: center; gap: 6px; align-self: flex-end; padding-bottom: 6px; font-size: 12.5px; color: var(--muted); cursor: pointer; }

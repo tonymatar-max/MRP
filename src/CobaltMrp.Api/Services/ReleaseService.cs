@@ -5,7 +5,8 @@ using CobaltMrp.Domain;
 namespace CobaltMrp.Api.Services;
 
 public sealed record ReleaseFailure(Guid? PlannedOrderId, string Error);
-public sealed record ReleaseOutcome(bool WritebackEnabled, int Pushed, List<ReleaseFailure> Failures);
+/// <param name="Documents">SAP B1 documents created (several planned orders can share one).</param>
+public sealed record ReleaseOutcome(bool WritebackEnabled, int Pushed, List<ReleaseFailure> Failures, int Documents = 0);
 
 /// <summary>
 /// Firms planned orders and, when Service Layer write-back is enabled, creates them in SAP B1 one by one.
@@ -17,7 +18,7 @@ public sealed class ReleaseService
     private readonly ILogger<ReleaseService> _log;
     public ReleaseService(SettingsService settings, ILogger<ReleaseService> log) { _settings = settings; _log = log; }
 
-    public async Task<ReleaseOutcome> ReleaseAsync(IRunStore store, IReadOnlyList<PlannedOrder> selected, CancellationToken ct, PushContext? context = null)
+    public async Task<ReleaseOutcome> ReleaseAsync(IRunStore store, IReadOnlyList<PlannedOrder> selected, CancellationToken ct, PushContext? context = null, DocumentGrouping grouping = DocumentGrouping.None)
     {
         foreach (var o in selected) o.Firmed = true;
         await store.SaveChangesAsync(ct);
@@ -33,7 +34,7 @@ public sealed class ReleaseService
         try
         {
             await client.LoginAsync(ct);
-            await new PlannedOrderWriteback(client, o => VendorResolver.Resolve(o, sl).Code).PushAsync(selected, ct, summary);
+            await new PlannedOrderWriteback(client, o => VendorResolver.Resolve(o, sl).Code).PushAsync(selected, ct, summary, grouping);
             // Log first: these documents now exist in SAP B1 whatever happens to the saves below.
             await SapPushRecorder.RecordAsync(context, _log, summary.Results.Where(r => !WasSkipped(r)).Select(r => Entry(selected.FirstOrDefault(x => x.Id == r.PlannedOrderId), r)).ToList());
             pushed = summary.Succeeded.Count();
@@ -67,7 +68,8 @@ public sealed class ReleaseService
                 new() { Action = SapPushActions.Session, Success = false, Summary = $"Service Layer write-back stopped while releasing {selected.Count} planned order(s)", Error = ex.Message },
             });
         }
-        return new ReleaseOutcome(true, pushed, failures);
+        var documents = summary.Succeeded.Select(r => (selected.FirstOrDefault(x => x.Id == r.PlannedOrderId)?.Type, r.DocEntry)).Distinct().Count();
+        return new ReleaseOutcome(true, pushed, failures, documents);
     }
 
     /// <summary>Orders the write-back declined before calling SAP B1 (not firmed, already pushed): nothing was sent, so nothing is logged.</summary>
@@ -81,7 +83,7 @@ public sealed class ReleaseService
         PlannedOrderId = r.PlannedOrderId,
         ItemCode = o?.ItemCode, WarehouseCode = o?.WarehouseCode, Quantity = o?.Quantity,
         Target = r.Success && o is not null ? $"{SapPushDescribe.DocPrefix(o.Type)}:{r.DocEntry}" : null,
-        Summary = o is null ? "Planned order not found" : SapPushDescribe.Summary(o),
+        Summary = o is null ? "Planned order not found" : SapPushDescribe.Summary(o) + (r.DocLines > 1 ? $"; one of {r.DocLines} lines on the same document" : ""),
         Error = r.Success ? null : r.Error ?? "Unknown error",
     };
 }

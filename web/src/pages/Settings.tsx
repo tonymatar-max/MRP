@@ -429,6 +429,14 @@ function PlanningSection({ value, onChange }: { value: PlanningSettings; onChang
             <option value="Request">Purchase request</option>
           </select>
         </div>
+        <div className="field">
+          <label htmlFor="pl-grp">Documents on release</label>
+          <select id="pl-grp" value={value.documentGrouping ?? 'Supplier'} onChange={(e) => set('documentGrouping', e.target.value as PlanningSettings['documentGrouping'])}>
+            <option value="Supplier">One document per supplier</option>
+            <option value="SupplierAndDate">Per supplier and due date</option>
+            <option value="None">No grouping (one per planned order)</option>
+          </select>
+        </div>
         <Num id="pl-trdays" label="Transfer time (days)" min={0} max={90} value={value.transferLeadTimeDays ?? 1} onChange={(n) => set('transferLeadTimeDays', n)}
           hint="Default for transfer requests between warehouses." />
       </div>

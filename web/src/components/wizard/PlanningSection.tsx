@@ -1,4 +1,4 @@
-import type { PlanningLevel, PurchaseDocument } from '../../api/types';
+import type { DocumentGrouping, PlanningLevel, PurchaseDocument } from '../../api/types';
 import { Check, ChipToggle, NumField, StepProps } from './parts';
 
 interface CardOption<T extends string> { value: T; title: string; text: string }
@@ -31,6 +31,12 @@ const DOCS: CardOption<PurchaseDocument>[] = [
   { value: 'Request', title: 'Purchase request', text: 'Planned purchases are released as purchase requests; no vendor needed yet.' },
 ];
 
+const GROUPINGS: CardOption<DocumentGrouping>[] = [
+  { value: 'Supplier', title: 'One document per supplier', text: 'On release, planned purchases for the same supplier become one purchase order or request with a line per item. Transfers go on one request per pair of warehouses and date.' },
+  { value: 'SupplierAndDate', title: 'Per supplier and due date', text: 'Like the above, but only items due on the same date share a document.' },
+  { value: 'None', title: 'No grouping', text: 'Every planned order becomes its own SAP B1 document.' },
+];
+
 /** `warehouses` is the effective list: the selected ones, or the whole lookup when none are selected. */
 export function PlanningSection({ c, set, warehouses }: StepProps & { warehouses: string[] }) {
   const t = c.transfers;
@@ -48,7 +54,9 @@ export function PlanningSection({ c, set, warehouses }: StepProps & { warehouses
       <RadioCards legend="Planning level" name="wz-level" options={LEVELS} value={c.level}
         onChange={(v) => set((x) => ({ ...x, level: v }))} />
       <RadioCards legend="Purchasing document" name="wz-doc" options={DOCS} value={c.purchasing.document}
-        onChange={(v) => set((x) => ({ ...x, purchasing: { document: v } }))} />
+        onChange={(v) => set((x) => ({ ...x, purchasing: { ...x.purchasing, document: v } }))} />
+      <RadioCards legend="Documents on release" name="wz-group" options={GROUPINGS} value={c.purchasing.grouping ?? 'Supplier'}
+        onChange={(v) => set((x) => ({ ...x, purchasing: { ...x.purchasing, grouping: v } }))} />
       {!company && (
         <div className="wz-group">
           <Check id="wz-tr" label="Create transfer requests when another warehouse has the quantity"

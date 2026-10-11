@@ -305,7 +305,7 @@ export function runDefaults(source: DataSource): RunCriteria {
   return {
     source,
     level: p.defaultLevel ?? 'Warehouse',
-    purchasing: { document: p.purchaseDocument ?? 'Order' },
+    purchasing: { document: p.purchaseDocument ?? 'Order', grouping: p.documentGrouping ?? 'Supplier' },
     transfers: { enabled: false, sourceWarehouses: [], leadTimeDays: p.transferLeadTimeDays ?? 1 },
     scope: { warehouses: [], itemGroups: [], suppliers: [], itemSearch: '', itemCodes: [], procurement: 'Both', planningMethods: [], includeComponents: true },
     horizon: { startDate: null, days: p.horizonDays, bucketDays: p.bucketDays },

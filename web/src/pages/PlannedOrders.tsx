@@ -10,7 +10,7 @@ import { RunPicker } from '../components/RunPicker';
 import { AskAiButton, ExplainButton } from '../components/AiAssistant';
 import { useSelectedRun } from '../components/RunContext';
 import { useT } from '../i18n';
-import { fmtDate, fmtNum, isPast, ORDER_TYPES, orderTypeLabel, orderTypeTag, sortBy, SortDir } from '../components/util';
+import { documentKey, fmtDate, fmtNum, isPast, ORDER_TYPES, orderTypeLabel, orderTypeTag, sortBy, SortDir } from '../components/util';
 
 function Pegging({ runId, id }: { runId: string; id: string }) {
   const tr = useT();
@@ -62,6 +62,9 @@ export default function PlannedOrders() {
   const [item, setItem] = useState('');
   const [wh, setWh] = useState('');
   const [type, setType] = useState('');
+  const [status, setStatus] = useState<'' | 'Planned' | 'Firmed'>('');
+  const [grouped, setGrouped] = useState(true);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [sortKey, setSortKey] = useState<keyof PlannedOrder>('releaseDate');
@@ -82,11 +85,12 @@ export default function PlannedOrders() {
         (!item || o.itemCode.toLowerCase().includes(item.toLowerCase())) &&
         (!wh || o.warehouseCode === wh || o.fromWarehouse === wh) &&
         (!type || o.type === type) &&
+        (!status || (status === 'Firmed') === o.firmed) &&
         (!from || o.releaseDate >= from) &&
         (!to || o.releaseDate <= to),
     );
     return sortBy(f, sortKey, dir);
-  }, [all, item, wh, type, from, to, sortKey, dir]);
+  }, [all, item, wh, type, status, from, to, sortKey, dir]);
 
   const th = (key: keyof PlannedOrder, label: string, cls = '') => (
     <th className={cls} onClick={() => { if (sortKey === key) setDir(dir === 'asc' ? 'desc' : 'asc'); else { setSortKey(key); setDir('asc'); } }}>
@@ -101,6 +105,47 @@ export default function PlannedOrders() {
     () => all.filter((o) => sel.has(o.id) && o.type === 'PurchaseOrder' && !o.vendorSource).length,
     [all, sel],
   );
+  // How the server will combine these orders when released (the run's own setting), and what the page shows for it.
+  const grouping = run.data?.criteria?.purchasing?.grouping ?? 'Supplier';
+  const canGroup = grouping !== 'None';
+  const sections = useMemo(() => {
+    if (!grouped || !canGroup) return null;
+    const byKey = new Map<string, PlannedOrder[]>();
+    for (const o of rows) {
+      const k = documentKey(o, grouping);
+      if (k) byKey.set(k, [...(byKey.get(k) ?? []), o]);
+    }
+    const seen = new Set<string>();
+    const out: ({ key: string; members: PlannedOrder[] } | { row: PlannedOrder })[] = [];
+    for (const o of rows) {
+      const k = documentKey(o, grouping);
+      if (k && (byKey.get(k)?.length ?? 0) > 1) {
+        if (!seen.has(k)) { seen.add(k); out.push({ key: k, members: byKey.get(k)! }); }
+      } else out.push({ row: o });
+    }
+    return out;
+  }, [rows, grouped, canGroup, grouping]);
+
+  /** How many SAP B1 documents the selected orders will become (orders already in SAP B1 are skipped). */
+  const docCount = useMemo(() => {
+    const keys = new Set<string>();
+    for (const o of all) if (sel.has(o.id) && !o.b1DocEntry) keys.add(documentKey(o, grouping) ?? o.id);
+    return keys.size;
+  }, [all, sel, grouping]);
+
+  const groupTitle = (o: PlannedOrder) => {
+    if (o.type === 'TransferRequest') return `${tr(orderTypeLabel(o.type))} · ${o.fromWarehouse} → ${o.warehouseCode}`;
+    const what = o.type === 'PurchaseRequest' ? tr('Purchase request') : tr('Purchase order');
+    return `${what} · ${o.vendorCode || tr('any supplier')}`;
+  };
+  const toggleGroup = (members: PlannedOrder[]) => setSel((s0) => {
+    const n = new Set(s0);
+    const every = members.every((m) => n.has(m.id));
+    for (const m of members) { if (every) n.delete(m.id); else n.add(m.id); }
+    return n;
+  });
+  const toggleCollapsed = (key: string) => setCollapsed((c) => { const n = new Set(c); n.has(key) ? n.delete(key) : n.add(key); return n; });
+
   const doRelease = () => {
     const ids = [...sel];
     const warnNv = noVendorSel ? ` ${noVendorSel} selected purchase order(s) have no vendor and will fail to release.` : '';
@@ -112,7 +157,9 @@ export default function PlannedOrders() {
             ? `Firmed ${r.released} order(s). SAP B1 write-back is off, nothing was created in B1.`
             : failed > 0
               ? `Pushed ${r.pushedToB1 ?? 0} to SAP B1, ${failed} failed. See the details.`
-              : `Released ${r.released} order(s): created in SAP B1`,
+              : r.documentsCreated != null
+                ? tr('Released {n} order(s) in {d} SAP B1 document(s).', { n: r.released, d: r.documentsCreated })
+                : `Released ${r.released} order(s): created in SAP B1`,
         );
         if (warnNv) setToast((t) => t + warnNv);
         if (r.writebackEnabled !== false && failed > 0) setReleaseResult(r);
@@ -121,6 +168,31 @@ export default function PlannedOrders() {
       },
     });
   };
+
+  const renderRow = (o: PlannedOrder, nested = false) => (
+        <Fragment key={o.id}>
+          <tr className={nested ? 'in-group' : undefined} onClick={() => setOpen(open === o.id ? null : o.id)} style={{ cursor: 'pointer' }}>
+            <td onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={sel.has(o.id)} onChange={() => toggle(o.id)} /></td>
+            <td><Llc level={o.lowLevelCode} /></td>
+            <td className="mono">{o.itemCode}</td>
+            <td>{o.type === 'TransferRequest' && o.fromWarehouse ? <span title={`Transfer from ${o.fromWarehouse} to ${o.warehouseCode}`}>{o.fromWarehouse} → {o.warehouseCode}</span> : o.warehouseCode}</td>
+            <td><span className={`type-tag ${orderTypeTag(o.type)}`}>{tr(orderTypeLabel(o.type))}</span></td>
+            <td><Vendor o={o} /></td>
+            <td className="num"><LeadTime o={o} /></td>
+            <td className="num">{fmtNum(o.quantity)}</td>
+            <td style={isPast(o.releaseDate) ? { color: 'var(--danger)', fontWeight: 600 } : undefined}>{fmtDate(o.releaseDate)}</td>
+            <td>{fmtDate(o.dueDate)}</td>
+            <td>
+              {o.firmed ? <Pill tone="ok">{tr('Firmed')}{o.b1DocEntry ? ` · ${o.b1DocEntry}` : ''}</Pill> : <Pill>{tr('Planned')}</Pill>}
+              <ExplainButton label={`${o.itemCode} ${orderTypeLabel(o.type)}`}
+                question={`Why was this planned order created? Planned order id ${o.id}: ${orderTypeLabel(o.type)} for item ${o.itemCode}, quantity ${fmtNum(o.quantity)}, warehouse ${o.warehouseCode}, due ${o.dueDate}. Show which demand it covers, how its quantity and dates were set (lead time, lot sizing), and anything I should double-check before releasing it.`} />
+            </td>
+          </tr>
+          {open === o.id && (
+            <tr className="expand-row"><td colSpan={11}><Pegging runId={runId!} id={o.id} /></td></tr>
+          )}
+        </Fragment>
+  );
 
   return (
     <>
@@ -138,9 +210,19 @@ export default function PlannedOrders() {
             <select value={wh} onChange={(e) => setWh(e.target.value)}><option value="">{tr('All')}</option>{warehouses.map((w) => <option key={w}>{w}</option>)}</select></div>
           <div className="field"><label>{tr('Type')}</label>
             <select value={type} onChange={(e) => setType(e.target.value)}><option value="">{tr('All')}</option>{ORDER_TYPES.map((t) => <option key={t} value={t}>{tr(orderTypeLabel(t))}</option>)}</select></div>
+          <div className="field"><label>{tr('Status')}</label>
+            <select value={status} onChange={(e) => setStatus(e.target.value as '' | 'Planned' | 'Firmed')}>
+              <option value="">{tr('All')}</option><option value="Planned">{tr('Planned')}</option><option value="Firmed">{tr('Firmed')}</option>
+            </select></div>
           <div className="field"><label>{tr('Release from')}</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
           <div className="field"><label>{tr('Release to')}</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
+          {canGroup && (
+            <label className="check-inline" title={tr('Show the orders that will share one SAP B1 document together')}>
+              <input type="checkbox" checked={grouped} onChange={(e) => setGrouped(e.target.checked)} /> {tr('Group by document')}
+            </label>
+          )}
           <div className="spacer" />
+          {sel.size > 0 && <span className="muted">{tr('{n} selected → {d} document(s)', { n: sel.size, d: docCount })}</span>}
           <span className="muted">{tr('{n} of {total} orders', { n: rows.length, total: all.length })}</span>
         </div>
         <div className="card">
@@ -157,30 +239,31 @@ export default function PlannedOrders() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((o) => (
-                    <Fragment key={o.id}>
-                      <tr onClick={() => setOpen(open === o.id ? null : o.id)} style={{ cursor: 'pointer' }}>
-                        <td onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={sel.has(o.id)} onChange={() => toggle(o.id)} /></td>
-                        <td><Llc level={o.lowLevelCode} /></td>
-                        <td className="mono">{o.itemCode}</td>
-                        <td>{o.type === 'TransferRequest' && o.fromWarehouse ? <span title={`Transfer from ${o.fromWarehouse} to ${o.warehouseCode}`}>{o.fromWarehouse} → {o.warehouseCode}</span> : o.warehouseCode}</td>
-                        <td><span className={`type-tag ${orderTypeTag(o.type)}`}>{tr(orderTypeLabel(o.type))}</span></td>
-                        <td><Vendor o={o} /></td>
-                        <td className="num"><LeadTime o={o} /></td>
-                        <td className="num">{fmtNum(o.quantity)}</td>
-                        <td style={isPast(o.releaseDate) ? { color: 'var(--danger)', fontWeight: 600 } : undefined}>{fmtDate(o.releaseDate)}</td>
-                        <td>{fmtDate(o.dueDate)}</td>
-                        <td>
-                          {o.firmed ? <Pill tone="ok">{tr('Firmed')}{o.b1DocEntry ? ` · ${o.b1DocEntry}` : ''}</Pill> : <Pill>{tr('Planned')}</Pill>}
-                          <ExplainButton label={`${o.itemCode} ${orderTypeLabel(o.type)}`}
-                            question={`Why was this planned order created? Planned order id ${o.id}: ${orderTypeLabel(o.type)} for item ${o.itemCode}, quantity ${fmtNum(o.quantity)}, warehouse ${o.warehouseCode}, due ${o.dueDate}. Show which demand it covers, how its quantity and dates were set (lead time, lot sizing), and anything I should double-check before releasing it.`} />
-                        </td>
-                      </tr>
-                      {open === o.id && (
-                        <tr className="expand-row"><td colSpan={11}><Pegging runId={runId!} id={o.id} /></td></tr>
-                      )}
-                    </Fragment>
-                  ))}
+                  {sections
+                    ? sections.map((sec) => {
+                        if ('row' in sec) return renderRow(sec.row);
+                        const n = sec.members.length;
+                        const picked = sec.members.filter((m) => sel.has(m.id)).length;
+                        const closed = collapsed.has(sec.key);
+                        return (
+                          <Fragment key={sec.key}>
+                            <tr className="group-row">
+                              <td>
+                                <input type="checkbox" checked={picked === n} aria-label={tr('Select all {n} lines of this document', { n })}
+                                  ref={(el) => { if (el) el.indeterminate = picked > 0 && picked < n; }} onChange={() => toggleGroup(sec.members)} />
+                              </td>
+                              <td colSpan={10}>
+                                <button type="button" className="btn ghost sm" aria-expanded={!closed} onClick={() => toggleCollapsed(sec.key)}>{closed ? '▸' : '▾'}</button>{' '}
+                                <strong>{groupTitle(sec.members[0])}</strong>{' '}
+                                <span className="muted">· {tr('{n} lines', { n })}{picked > 0 ? ` · ${tr('{k} of {n} selected', { k: picked, n })}` : ''}</span>{' '}
+                                <span className="hint">→ {tr('one SAP B1 document')}</span>
+                              </td>
+                            </tr>
+                            {!closed && sec.members.map((m) => renderRow(m, true))}
+                          </Fragment>
+                        );
+                      })
+                    : rows.map((o) => renderRow(o))}
                 </tbody>
               </table>
             </div>

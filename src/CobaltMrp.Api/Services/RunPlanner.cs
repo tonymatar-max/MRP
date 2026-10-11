@@ -45,6 +45,7 @@ public sealed class RunPlanner
         c.LeadTime.DefaultDays = p.DefaultLeadTimeDays;
         c.Level = p.DefaultLevel == "Company" ? PlanningLevel.Company : PlanningLevel.Warehouse;
         c.Purchasing.Document = p.PurchaseDocument == "Request" ? PurchaseDocument.Request : PurchaseDocument.Order;
+        c.Purchasing.Grouping = Enum.TryParse<DocumentGrouping>(p.DocumentGrouping, true, out var grouping) ? grouping : DocumentGrouping.Supplier;
         c.Transfers.LeadTimeDays = p.TransferLeadTimeDays;
         c.LeadTime.Priority = p.LeadTimePriority
             .Select(n => Enum.TryParse<LeadTimeSourceKind>(n, true, out var k) ? (LeadTimeSourceKind?)k : null)

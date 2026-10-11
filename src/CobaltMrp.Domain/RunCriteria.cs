@@ -11,6 +11,8 @@ public enum LeadTimeMode { FirstAvailable = 0, Longest = 1 }
 /// <summary>Plan each warehouse separately (with optional transfers) or pool all selected warehouses into one company-wide plan.</summary>
 public enum PlanningLevel { Warehouse = 0, Company = 1 }
 public enum PurchaseDocument { Order = 0, Request = 1 }
+/// <summary>How planned orders become SAP B1 documents on release: one document per order, or several lines on one document.</summary>
+public enum DocumentGrouping { None = 0, Supplier = 1, SupplierAndDate = 2 }
 
 public sealed class ScopeCriteria
 {
@@ -78,6 +80,9 @@ public sealed class PurchasingCriteria
 {
     /// <summary>What a purchased item produces: purchase orders or purchase requests.</summary>
     public PurchaseDocument Document { get; set; } = PurchaseDocument.Order;
+    /// <summary>On release: None = one SAP B1 document per planned order. Supplier = one purchase order / request per supplier
+    /// (and one transfer request per from/to warehouse and date). SupplierAndDate = also the same due date.</summary>
+    public DocumentGrouping Grouping { get; set; } = DocumentGrouping.Supplier;
 }
 
 public sealed class TransferCriteria

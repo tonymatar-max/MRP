@@ -157,6 +157,8 @@ public sealed class PlanningSettings
     public string DefaultLevel { get; set; } = "Warehouse";
     /// <summary>"Order" or "Request": what a purchased item produces.</summary>
     public string PurchaseDocument { get; set; } = "Order";
+    /// <summary>"None", "Supplier" or "SupplierAndDate": the wizard starts from this (see DocumentGrouping).</summary>
+    public string DocumentGrouping { get; set; } = "Supplier";
     public int TransferLeadTimeDays { get; set; } = 1;
 
     public PlanningSettings Clone() => new()
@@ -166,7 +168,7 @@ public sealed class PlanningSettings
         ForecastConsumption = ForecastConsumption, UseB1Calendar = UseB1Calendar,
         WorkingDays = WorkingDays.ToList(),
         LeadTimePriority = LeadTimePriority.ToList(), LeadTimeMode = LeadTimeMode, DefaultLeadTimeDays = DefaultLeadTimeDays,
-        DefaultLevel = DefaultLevel, PurchaseDocument = PurchaseDocument, TransferLeadTimeDays = TransferLeadTimeDays,
+        DefaultLevel = DefaultLevel, PurchaseDocument = PurchaseDocument, DocumentGrouping = DocumentGrouping, TransferLeadTimeDays = TransferLeadTimeDays,
         NonWorkingDates = NonWorkingDates.Select(n => new NonWorkingDate { Date = n.Date, Reason = n.Reason }).ToList(),
         Resources = Resources.Select(r => new ResourceSetting
         {

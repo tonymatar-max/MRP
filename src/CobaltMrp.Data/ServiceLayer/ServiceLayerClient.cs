@@ -105,26 +105,28 @@ public sealed class ServiceLayerClient : IDisposable
     /// </summary>
     /// <remarks>CardCode (supplier) is not part of the planning result; the caller must supply a
     /// vendor. Here we accept it as a parameter so the payload is complete and valid.</remarks>
-    public async Task<int> CreatePurchaseOrderAsync(PlannedOrder order, string cardCode, CancellationToken ct = default)
+    public Task<int> CreatePurchaseOrderAsync(PlannedOrder order, string cardCode, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(order);
+        return CreatePurchaseOrderAsync(new[] { order }, cardCode, ct);
+    }
+
+    /// <summary>One purchase order for one supplier with a line per planned order. The header due date is the earliest line;
+    /// every line keeps its own <c>ShipDate</c>.</summary>
+    public async Task<int> CreatePurchaseOrderAsync(IReadOnlyList<PlannedOrder> orders, string cardCode, CancellationToken ct = default)
+    {
+        RequireOrders(orders);
         var doc = new PurchaseOrderDto
         {
             CardCode = cardCode,
-            DocDueDate = order.DueDate.ToString("yyyy-MM-dd"),
-            Comments = $"Cobalt MRP planned order {order.Id}",
-            DocumentLines =
-            {
-                new DocumentLineDto
-                {
-                    ItemCode = order.ItemCode,
-                    Quantity = order.Quantity,
-                    WarehouseCode = order.WarehouseCode,
-                    ShipDate = order.DueDate.ToString("yyyy-MM-dd"),
-                },
-            },
+            DocDueDate = Date(orders.Min(o => o.DueDate)),
+            Comments = Remark(orders),
         };
-
+        foreach (var o in orders)
+            doc.DocumentLines.Add(new DocumentLineDto
+            {
+                ItemCode = o.ItemCode, Quantity = o.Quantity, WarehouseCode = o.WarehouseCode, ShipDate = Date(o.DueDate),
+            });
         return await PostDocumentAsync("PurchaseOrders", doc, ct);
     }
 
@@ -154,49 +156,80 @@ public sealed class ServiceLayerClient : IDisposable
     /// Create a Purchase Request (<c>/PurchaseRequests</c>). The supplier is optional on a request. Note SAP's own
     /// spelling of the header field: <c>RequriedDate</c>.
     /// </summary>
-    public async Task<int> CreatePurchaseRequestAsync(PlannedOrder order, string? vendorCode, CancellationToken ct = default)
+    public Task<int> CreatePurchaseRequestAsync(PlannedOrder order, string? vendorCode, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(order);
-        var due = order.DueDate.ToString("yyyy-MM-dd");
-        var doc = new PurchaseRequestDto
-        {
-            RequriedDate = due,
-            DocDueDate = due,
-            Comments = $"Cobalt MRP planned order {order.Id}",
-            DocumentLines =
+        return CreatePurchaseRequestAsync(new[] { order }, vendorCode, ct);
+    }
+
+    /// <summary>One purchase request with a line per planned order. The header required date is the earliest line; every line
+    /// keeps its own <c>RequiredDate</c> (SAP B1 DocumentLine field, checked against the Service Layer metadata).</summary>
+    public async Task<int> CreatePurchaseRequestAsync(IReadOnlyList<PlannedOrder> orders, string? vendorCode, CancellationToken ct = default)
+    {
+        RequireOrders(orders);
+        var earliest = Date(orders.Min(o => o.DueDate));
+        var doc = new PurchaseRequestDto { RequriedDate = earliest, DocDueDate = earliest, Comments = Remark(orders) };
+        foreach (var o in orders)
+            doc.DocumentLines.Add(new PurchaseRequestLineDto
             {
-                new PurchaseRequestLineDto
-                {
-                    ItemCode = order.ItemCode, Quantity = order.Quantity, WarehouseCode = order.WarehouseCode,
-                    LineVendor = string.IsNullOrWhiteSpace(vendorCode) ? null : vendorCode,
-                },
-            },
-        };
+                ItemCode = o.ItemCode, Quantity = o.Quantity, WarehouseCode = o.WarehouseCode,
+                RequiredDate = Date(o.DueDate),
+                LineVendor = string.IsNullOrWhiteSpace(vendorCode) ? null : vendorCode,
+            });
         return await PostDocumentAsync("PurchaseRequests", doc, ct);
     }
 
     /// <summary>Create an inventory transfer request (<c>/InventoryTransferRequests</c>) from the sending to the receiving warehouse.</summary>
-    public async Task<int> CreateTransferRequestAsync(PlannedOrder order, CancellationToken ct = default)
+    public Task<int> CreateTransferRequestAsync(PlannedOrder order, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(order);
-        if (string.IsNullOrWhiteSpace(order.FromWarehouse))
-            throw new InvalidOperationException($"Transfer for item {order.ItemCode} has no sending warehouse.");
-        var doc = new TransferRequestDto
+        return CreateTransferRequestAsync(new[] { order }, ct);
+    }
+
+    /// <summary>One transfer request with a line per planned order. All orders must go from the same warehouse to the same warehouse.</summary>
+    public async Task<int> CreateTransferRequestAsync(IReadOnlyList<PlannedOrder> orders, CancellationToken ct = default)
+    {
+        RequireOrders(orders);
+        var from = orders[0].FromWarehouse;
+        foreach (var o in orders)
         {
-            FromWarehouse = order.FromWarehouse,
-            ToWarehouse = order.WarehouseCode,
-            DueDate = order.DueDate.ToString("yyyy-MM-dd"),
-            Comments = $"Cobalt MRP planned order {order.Id}",
-            StockTransferLines =
+            if (string.IsNullOrWhiteSpace(o.FromWarehouse))
+                throw new InvalidOperationException($"Transfer for item {o.ItemCode} has no sending warehouse.");
+            if (!string.Equals(o.FromWarehouse, from, StringComparison.OrdinalIgnoreCase) || !string.Equals(o.WarehouseCode, orders[0].WarehouseCode, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Transfers on one request must share the same sending and receiving warehouse.");
+        }
+        var doc = new TransferRequestDto { FromWarehouse = from, ToWarehouse = orders[0].WarehouseCode, DueDate = Date(orders.Min(o => o.DueDate)), Comments = Remark(orders) };
+        foreach (var o in orders)
+            doc.StockTransferLines.Add(new TransferRequestLineDto
             {
-                new TransferRequestLineDto
-                {
-                    ItemCode = order.ItemCode, Quantity = order.Quantity,
-                    FromWarehouseCode = order.FromWarehouse, WarehouseCode = order.WarehouseCode,
-                },
-            },
-        };
+                ItemCode = o.ItemCode, Quantity = o.Quantity, FromWarehouseCode = o.FromWarehouse, WarehouseCode = o.WarehouseCode,
+            });
         return await PostDocumentAsync("InventoryTransferRequests", doc, ct);
+    }
+
+    private static string Date(DateOnly d) => d.ToString("yyyy-MM-dd");
+
+    private static void RequireOrders(IReadOnlyList<PlannedOrder> orders)
+    {
+        ArgumentNullException.ThrowIfNull(orders);
+        if (orders.Count == 0) throw new ArgumentException("At least one planned order is needed.", nameof(orders));
+    }
+
+    /// <summary>SAP B1 allows 254 characters in a document's remarks: one order names itself, several list short ids.</summary>
+    public static string Remark(IReadOnlyList<PlannedOrder> orders)
+    {
+        if (orders.Count == 1) return $"Cobalt MRP planned order {orders[0].Id}";
+        var head = $"Cobalt MRP planned orders ({orders.Count}): ";
+        var text = head;
+        var shown = 0;
+        foreach (var o in orders)
+        {
+            var id = o.Id.ToString("N")[..8];
+            var next = shown == 0 ? id : ", " + id;
+            if (text.Length + next.Length + 12 > 254) break;
+            text += next; shown++;
+        }
+        return shown < orders.Count ? $"{text} +{orders.Count - shown} more" : text;
     }
 
     // ---- Reading and changing existing documents --------------------------------------------------------------
@@ -291,6 +324,7 @@ public sealed class ServiceLayerClient : IDisposable
         public string? ItemCode { get; set; }
         public decimal Quantity { get; set; }
         public string? WarehouseCode { get; set; }
+        public string? RequiredDate { get; set; }
         public string? LineVendor { get; set; }
     }
 

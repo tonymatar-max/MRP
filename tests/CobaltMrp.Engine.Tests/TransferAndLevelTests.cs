@@ -319,7 +319,10 @@ public class TransferAndLevelTests
         c.Transfers.Enabled = true; c.Transfers.LeadTimeDays = 3; c.Transfers.SourceWarehouses = new() { "02" }; c.Scope.Warehouses = new() { "01", "02" };
         var back = RunCriteria.FromJson(c.ToJson())!;
         Assert.Equal(c.ToJson(), back.ToJson());
-        Assert.Contains("\"purchasing\":{\"document\":\"Request\"}", c.ToJson());
+        Assert.Contains("\"purchasing\":{\"document\":\"Request\",\"grouping\":\"Supplier\"}", c.ToJson());
+        c.Purchasing.Grouping = DocumentGrouping.SupplierAndDate;
+        Assert.Equal(DocumentGrouping.SupplierAndDate, RunCriteria.FromJson(c.ToJson())!.Purchasing.Grouping);
+        Assert.Equal(DocumentGrouping.Supplier, RunCriteria.FromJson("{\"purchasing\":{\"document\":\"Order\"}}")!.Purchasing.Grouping);   // runs saved before this option existed
         var o = CriteriaApplier.ToOptions(back, Mon, "u", null);
         Assert.True(o.TransferEnabled); Assert.False(o.CompanyLevel);
         Assert.Equal((PurchaseDocument.Request, 3), (o.PurchaseDocument, o.TransferLeadDays));

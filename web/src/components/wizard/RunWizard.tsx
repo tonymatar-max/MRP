@@ -44,7 +44,7 @@ export function withPlanningDefaults(c: RunCriteria): RunCriteria {
   return {
     ...c,
     level: c.level ?? 'Warehouse',
-    purchasing: c.purchasing ?? { document: 'Order' },
+    purchasing: { document: c.purchasing?.document ?? 'Order', grouping: c.purchasing?.grouping ?? 'Supplier' },
     transfers: c.transfers ?? { enabled: false, sourceWarehouses: [], leadTimeDays: 1 },
   };
 }

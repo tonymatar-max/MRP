@@ -11,6 +11,7 @@ function rows(c: RunCriteria): [string, string][] {
     ['Data source', c.source === 'b1-sql' ? 'SAP B1 (SQL)' : 'Mock sample data'],
     ['Planning level', c.level === 'Company' ? 'Company (stock pooled)' : 'Warehouse (each planned separately)'],
     ['Purchasing document', c.purchasing?.document === 'Request' ? 'Purchase request' : 'Purchase order'],
+    ['Documents on release', ({ None: 'No grouping', SupplierAndDate: 'Per supplier and due date', Supplier: 'One per supplier' } as Record<string, string>)[c.purchasing?.grouping ?? 'Supplier']],
     ['Warehouses', list(s.warehouses)],
     ...(c.level === 'Warehouse' ? [['Transfers', c.transfers?.enabled ? `On, from ${list(c.transfers.sourceWarehouses, 'every selected warehouse')}, ${c.transfers.leadTimeDays} d` : 'Off'] as [string, string]] : []),
     ['Item groups', list(s.itemGroups)],

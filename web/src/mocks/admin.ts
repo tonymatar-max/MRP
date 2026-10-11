@@ -31,7 +31,7 @@ let settings: AppSettings = {
   planning: { defaultSource: 'mock', horizonDays: 60, bucketDays: 7, hoursPerUnitPerDay: 8, forecastLookbackDays: 0,
     forecastConsumption: 'Forward', leadTimePriority: ['Supplier', 'Item', 'ItemGroup'], leadTimeMode: 'FirstAvailable', defaultLeadTimeDays: 0, useB1Calendar: true, workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
     nonWorkingDates: [{ date: '2026-12-25', reason: 'Christmas' }], resources: [],
-    defaultLevel: 'Warehouse', purchaseDocument: 'Order', transferLeadTimeDays: 1,
+    defaultLevel: 'Warehouse', purchaseDocument: 'Order', documentGrouping: 'Supplier', transferLeadTimeDays: 1,
   },
   ai: { enabled: false, apiKey: '', apiKeySet: false, model: 'anthropic/claude-opus-5', maxTokens: 1024 },
 };
