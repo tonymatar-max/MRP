@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useRun } from '../api/hooks';
+import { useNewExceptions, useRun } from '../api/hooks';
 import type { ExceptionMessage, ExceptionType } from '../api/types';
 import { Empty, ErrorState, ExceptionPill, Loading, PageHeader, Pill } from '../components/ui';
 import { RunPicker } from '../components/RunPicker';
@@ -10,8 +10,7 @@ import { useAuth } from '../components/Auth';
 import { ExecuteDialog } from '../components/ExecuteDialog';
 import { EXCEPTION_META, fmtDate, fmtDateTime, fmtNum } from '../components/util';
 
-type Filter = 'Open' | 'Done' | 'All';
-const FILTERS: Filter[] = ['Open', 'Done', 'All'];
+type Filter = 'Open' | 'New' | 'Done' | 'All';
 const NO_ADMIN = 'Only an administrator can execute';
 const isDone = (e: ExceptionMessage) => e.actionStatus === 'Done';
 
@@ -45,8 +44,11 @@ export default function Exceptions() {
   const { isAdmin } = useAuth();
   const [filter, setFilter] = useState<Filter>('Open');
   const [executing, setExecuting] = useState<ExceptionMessage | null>(null);
+  const fresh = useNewExceptions(runId);
+  const filters: Filter[] = fresh.hasPrevious ? ['Open', 'New', 'Done', 'All'] : ['Open', 'Done', 'All'];
+  const active: Filter = filters.includes(filter) ? filter : 'Open';
   const all = run.data?.exceptions ?? [];
-  const list = all.filter((e) => (filter === 'All' ? true : filter === 'Done' ? isDone(e) : !isDone(e)));
+  const list = all.filter((e) => (active === 'All' ? true : active === 'Done' ? isDone(e) : active === 'New' ? !isDone(e) && fresh.isNew(e) : !isDone(e)));
   const doneCount = all.filter(isDone).length;
 
   return (
@@ -55,9 +57,9 @@ export default function Exceptions() {
       <div className="page">
         {run.data && all.length > 0 && (
           <div className="toolbar" role="group" aria-label="Filter exceptions by status"><div className="seg">
-            {FILTERS.map((f) => (
-              <button key={f} type="button" className={filter === f ? 'on' : ''} aria-pressed={filter === f} onClick={() => setFilter(f)}>
-                {f}{f === 'Done' ? ` (${doneCount})` : f === 'Open' ? ` (${all.length - doneCount})` : ` (${all.length})`}
+            {filters.map((f) => (
+              <button key={f} type="button" className={active === f ? 'on' : ''} aria-pressed={active === f} onClick={() => setFilter(f)} title={f === 'New' ? 'Not in the run before this one' : undefined}>
+                {f}{f === 'Done' ? ` (${doneCount})` : f === 'Open' ? ` (${all.length - doneCount})` : f === 'New' ? ` (${fresh.count})` : ` (${all.length})`}
               </button>
             ))}
           </div></div>
@@ -65,7 +67,7 @@ export default function Exceptions() {
         {run.isLoading && <Loading />}
         {run.isError && <ErrorState error={run.error} />}
         {run.data && all.length === 0 && <div className="card"><Empty title="No exceptions for this run" /></div>}
-        {run.data && all.length > 0 && list.length === 0 && <div className="card"><Empty title={`No ${filter.toLowerCase()} exceptions`} /></div>}
+        {run.data && all.length > 0 && list.length === 0 && <div className="card"><Empty title={`No ${active.toLowerCase()} exceptions`} /></div>}
         {(Object.keys(EXCEPTION_META) as ExceptionType[]).map((t) => {
           const rows = list.filter((e) => e.type === t);
           if (!rows.length) return null;
@@ -78,7 +80,7 @@ export default function Exceptions() {
                   <tbody>
                     {rows.map((e) => (
                       <tr key={e.id}>
-                        <td className="mono">{e.itemCode}</td>
+                        <td className="mono">{e.itemCode}{fresh.hasPrevious && !isDone(e) && fresh.isNew(e) && <> <Pill tone="info">New</Pill></>}</td>
                         <td>{e.warehouseCode}</td>
                         <td style={{ whiteSpace: 'normal' }}>{e.message}</td>
                         <td>{fmtDate(e.relatedDate)}</td>

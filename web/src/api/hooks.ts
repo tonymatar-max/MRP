@@ -1,8 +1,9 @@
+import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
 import type {
   AppSettings, BulkItemRequest, CalendarQuery, DataSource, Forecast, MasterItemQuery, MasterOverride, MasterSupplierQuery, NewUser,
-  RunCriteria, SapLogQuery, PreviewDetailsRequest, TriggerRunRequest, ExecuteRequest, ExecutePayload,
+  ExceptionMessage, RunCriteria, SapLogQuery, PreviewDetailsRequest, TriggerRunRequest, ExecuteRequest, ExecutePayload,
 } from './types';
 
 export function useRuns() {
@@ -221,4 +222,25 @@ export function useSapLog(q: SapLogQuery) {
 /** Warehouses of the chosen data source (mock sample or SAP B1). */
 export function useWarehouses(source: DataSource) {
   return useQuery({ queryKey: ['warehouses', source], queryFn: () => api.getWarehouses(source), staleTime: 60_000 });
+}
+
+/** What identifies "the same exception" from one run to the next (ids are new every run). */
+export const exceptionKey = (e: ExceptionMessage) => [e.type, e.itemCode, e.warehouseCode ?? '', e.sourceDocKey ?? '', e.sourceLine ?? ''].join('|');
+
+/**
+ * Exceptions in this run that the run before it did not have: what a planner needs to look at first.
+ * `hasPrevious` is false when there is no earlier run to compare with (then nothing is called new).
+ */
+export function useNewExceptions(runId: string | undefined) {
+  const runs = useRuns().data;
+  const idx = runs && runId ? runs.findIndex((r) => r.id === runId) : -1;
+  const prevId = idx >= 0 ? runs?.[idx + 1]?.id : undefined;
+  const cur = useRun(runId).data;
+  const prev = useRun(prevId).data;
+  return useMemo(() => {
+    if (!cur || !prev) return { hasPrevious: false, count: 0, isNew: (_: ExceptionMessage) => false };
+    const seen = new Set(prev.exceptions.map(exceptionKey));
+    const isNew = (e: ExceptionMessage) => !seen.has(exceptionKey(e));
+    return { hasPrevious: true, count: cur.exceptions.filter((e) => e.actionStatus !== 'Done' && isNew(e)).length, isNew };
+  }, [cur, prev]);
 }
