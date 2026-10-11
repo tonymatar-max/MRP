@@ -7,10 +7,12 @@ import { CriteriaPanel } from '../components/CriteriaPanel';
 import { RunPicker } from '../components/RunPicker';
 import { AskAiButton, SummariseButton, SummaryCard, useRunSummary } from '../components/AiAssistant';
 import { useSelectedRun } from '../components/RunContext';
+import { useT } from '../i18n';
 import { EXCEPTION_META, fmtDate, fmtDateTime } from '../components/util';
 import type { ExceptionType, RunCriteria } from '../api/types';
 
 export default function Dashboard() {
+  const tr = useT();
   const [wizard, setWizard] = useState<{ initial: RunCriteria | null } | null>(null);
   const [quick, setQuick] = useState(false);
   const { runId, setRunId } = useSelectedRun();
@@ -35,18 +37,18 @@ export default function Dashboard() {
       <PageHeader
         crumb="Overview"
         title="Dashboard"
-        actions={<><RunPicker /><SummariseButton onClick={() => void summary.go()} busy={summary.busy} /><AskAiButton /><button type="button" className="btn ghost sm" onClick={() => setQuick(true)}>Quick run</button><button type="button" className="btn primary" onClick={() => setWizard({ initial: null })}>Run MRP</button></>}
+        actions={<><RunPicker /><SummariseButton onClick={() => void summary.go()} busy={summary.busy} /><AskAiButton /><button type="button" className="btn ghost sm" onClick={() => setQuick(true)}>{tr('Quick run')}</button><button type="button" className="btn primary" onClick={() => setWizard({ initial: null })}>{tr('Run MRP')}</button></>}
       />
       <div className="page">
         {runs.data && runs.data.length === 0 && (
-          <div className="card"><Empty title="No MRP runs yet">Click <strong>Run MRP</strong> to plan your first run.</Empty></div>
+          <div className="card"><Empty title="No MRP runs yet">{tr('Click Run MRP to plan your first run.')}</Empty></div>
         )}
         {run.isLoading && <Loading />}
         {run.isError && <ErrorState error={run.error} />}
         {d && (
           <>
             <div className="muted" style={{ marginBottom: 12 }}>
-              {d.id} · horizon {fmtDate(d.horizonStart)} → {fmtDate(d.horizonEnd)} · {d.bucketDays}-day buckets · by {d.runBy}
+              {d.id} · {tr('horizon')} {fmtDate(d.horizonStart)} → {fmtDate(d.horizonEnd)} · {tr('{n}-day buckets', { n: d.bucketDays })} · {tr('by {user}', { user: d.runBy })}
             </div>
             <SummaryCard s={summary} />
             <CriteriaPanel criteria={d.criteria} onRerun={(c) => setWizard({ initial: c })} />
@@ -60,18 +62,18 @@ export default function Dashboard() {
             </div>
             <div className="grid-2">
               <div className="card">
-                <div className="card-h"><h3>Exceptions by type</h3></div>
+                <div className="card-h"><h3>{tr('Exceptions by type')}</h3></div>
                 <div className="card-b chips">
                   {byType.map(({ t, n }) => (
-                    <span key={t} className={`pill ${EXCEPTION_META[t].tone}`}>{EXCEPTION_META[t].label}: {n}</span>
+                    <span key={t} className={`pill ${EXCEPTION_META[t].tone}`}>{tr(EXCEPTION_META[t].label)}: {n}</span>
                   ))}
                 </div>
               </div>
               <div className="card">
-                <div className="card-h"><h3>Recent runs</h3></div>
+                <div className="card-h"><h3>{tr('Recent runs')}</h3></div>
                 <div className="table-wrap">
                   <table className="data">
-                    <thead><tr><th className="nosort">Run</th><th className="nosort">When</th><th className="nosort num">Orders</th></tr></thead>
+                    <thead><tr><th className="nosort">{tr('Run')}</th><th className="nosort">{tr('When')}</th><th className="nosort num">{tr('Orders')}</th></tr></thead>
                     <tbody>
                       {(runs.data ?? []).map((r) => (
                         <tr key={r.id} onClick={() => setRunId(r.id)} style={{ cursor: 'pointer', fontWeight: r.id === runId ? 700 : 400 }}>

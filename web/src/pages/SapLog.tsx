@@ -3,6 +3,7 @@ import { useSapLog } from '../api/hooks';
 import type { SapLogEntry, SapPushAction } from '../api/types';
 import { useDebounced } from '../components/useDebounced';
 import { Empty, ErrorState, Loading, PageHeader, Pill } from '../components/ui';
+import { useT } from '../i18n';
 import { fmtDateTime, fmtNum } from '../components/util';
 
 type Result = 'all' | 'ok' | 'failed';
@@ -17,7 +18,7 @@ const ACTIONS: { id: SapPushAction; label: string }[] = [
   { id: 'CloseDocument', label: 'Close / cancel document' },
   { id: 'Session', label: 'Service Layer session' },
 ];
-const actionLabel = (a: SapPushAction) => ACTIONS.find((x) => x.id === a)?.label ?? a;
+const actionLabel = (a: SapPushAction) => ACTIONS.find((x) => x.id === a)?.label ?? a;   // English: also used for the CSV
 
 const csvCell = (v: unknown) => {
   const t = v == null ? '' : String(v);
@@ -35,6 +36,7 @@ function downloadCsv(rows: SapLogEntry[]) {
 }
 
 export default function SapLog() {
+  const tr = useT();
   const [result, setResult] = useState<Result>('all');
   const [action, setAction] = useState<SapPushAction | ''>('');
   const [item, setItem] = useState('');
@@ -52,35 +54,34 @@ export default function SapLog() {
     <>
       <PageHeader
         crumb="Data" title="SAP push log"
-        actions={<button type="button" className="btn" disabled={!rows.length} onClick={() => downloadCsv(rows)}>Export CSV</button>}
+        actions={<button type="button" className="btn" disabled={!rows.length} onClick={() => downloadCsv(rows)}>{tr('Export CSV')}</button>}
       />
       <div className="page">
         <div className="alert info-note" role="note">
-          Every time Cobalt MRP writes to SAP Business One (release a planned order, move a due date, close a document) it is recorded here, whether it worked or not.
-          Passwords and request bodies are never stored.
+          {tr('Every time Cobalt MRP writes to SAP Business One (release a planned order, move a due date, close a document) it is recorded here, whether it worked or not. Passwords and request bodies are never stored.')}
         </div>
         <div className="toolbar">
-          <div className="seg" role="group" aria-label="Filter by result">
+          <div className="seg" role="group" aria-label={tr('Filter by result')}>
             {RESULTS.map((r) => (
-              <button key={r.id} type="button" className={result === r.id ? 'on' : ''} aria-pressed={result === r.id} onClick={() => setResult(r.id)}>{r.label}</button>
+              <button key={r.id} type="button" className={result === r.id ? 'on' : ''} aria-pressed={result === r.id} onClick={() => setResult(r.id)}>{tr(r.label)}</button>
             ))}
           </div>
           <div className="field">
-            <label htmlFor="sl-action">Action</label>
+            <label htmlFor="sl-action">{tr('Action')}</label>
             <select id="sl-action" value={action} onChange={(e) => setAction(e.target.value as SapPushAction | '')}>
-              <option value="">All actions</option>
-              {ACTIONS.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
+              <option value="">{tr('All actions')}</option>
+              {ACTIONS.map((a) => <option key={a.id} value={a.id}>{tr(a.label)}</option>)}
             </select>
           </div>
           <div className="field">
-            <label htmlFor="sl-item">Item</label>
-            <input id="sl-item" className="search" placeholder="Item code" value={item} onChange={(e) => setItem(e.target.value)} />
+            <label htmlFor="sl-item">{tr('Item')}</label>
+            <input id="sl-item" className="search" placeholder={tr('Item code')} value={item} onChange={(e) => setItem(e.target.value)} />
           </div>
           <div className="field">
-            <label htmlFor="sl-user">User</label>
-            <input id="sl-user" placeholder="User name" value={user} onChange={(e) => setUser(e.target.value)} />
+            <label htmlFor="sl-user">{tr('User')}</label>
+            <input id="sl-user" placeholder={tr('User name')} value={user} onChange={(e) => setUser(e.target.value)} />
           </div>
-          {log.data && <span className="muted" style={{ marginLeft: 'auto' }}>{rows.length} entries{failed ? `, ${failed} failed` : ''}</span>}
+          {log.data && <span className="muted" style={{ marginLeft: 'auto' }}>{tr('{n} entries', { n: rows.length })}{failed ? `, ${tr('{n} failed', { n: failed })}` : ''}</span>}
         </div>
 
         {log.isLoading && <Loading />}
@@ -92,9 +93,9 @@ export default function SapLog() {
               <table className="data">
                 <thead>
                   <tr>
-                    <th className="nosort">When</th><th className="nosort">User</th><th className="nosort">Action</th><th className="nosort">Result</th>
-                    <th className="nosort">Item</th><th className="nosort">Whs</th><th className="nosort num">Qty</th>
-                    <th className="nosort">SAP document</th><th className="nosort">Details</th>
+                    <th className="nosort">{tr('When')}</th><th className="nosort">{tr('User')}</th><th className="nosort">{tr('Action')}</th><th className="nosort">{tr('Result')}</th>
+                    <th className="nosort">{tr('Item')}</th><th className="nosort">{tr('Whs')}</th><th className="nosort num">{tr('Qty')}</th>
+                    <th className="nosort">{tr('SAP document')}</th><th className="nosort">{tr('Details')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -102,8 +103,8 @@ export default function SapLog() {
                     <tr key={r.id}>
                       <td>{fmtDateTime(r.at)}</td>
                       <td>{r.userName || <span className="muted">—</span>}</td>
-                      <td>{actionLabel(r.action)}</td>
-                      <td><Pill tone={r.success ? 'ok' : 'danger'}>{r.success ? 'OK' : 'Failed'}</Pill></td>
+                      <td>{tr(actionLabel(r.action))}</td>
+                      <td><Pill tone={r.success ? 'ok' : 'danger'}>{r.success ? tr('OK') : tr('Failed')}</Pill></td>
                       <td>{r.itemCode ?? <span className="muted">—</span>}</td>
                       <td>{r.warehouseCode ?? <span className="muted">—</span>}</td>
                       <td className="num">{r.quantity != null ? fmtNum(r.quantity) : <span className="muted">—</span>}</td>

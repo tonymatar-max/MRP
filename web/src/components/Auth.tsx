@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, setUnauthorizedHandler } from '../api/client';
 import type { AuthStatus, AuthUser } from '../api/types';
 import { BrandMark, Loading } from './ui';
+import { LangSwitch, useT } from '../i18n';
 
 interface AuthCtx {
   user: AuthUser;
@@ -35,7 +36,8 @@ function Net() {
 }
 
 function AuthShell({ title, intro, children }: { title: string; intro?: string; children: ReactNode }) {
-  useEffect(() => { document.title = `${title} · Cobalt MRP`; }, [title]);
+  const t = useT();
+  useEffect(() => { document.title = `${t(title)} · Cobalt MRP`; }, [title, t]);
   return (
     <div className="auth">
       <section className="auth-hero">
@@ -45,17 +47,18 @@ function AuthShell({ title, intro, children }: { title: string; intro?: string; 
           <div className="product-title"><strong>Cobalt</strong><span className="product-sub">MRP</span></div>
         </div>
         <div className="pitch">
-          <h1>Plan supply with confidence.</h1>
-          <p className="lead">Material and capacity planning for SAP Business One.</p>
+          <h1>{t('Plan supply with confidence.')}</h1>
+          <p className="lead">{t('Material and capacity planning for SAP Business One.')}</p>
         </div>
         <div className="foot">© {new Date().getFullYear()} Solvep · Cobalt product family</div>
       </section>
       <section className="auth-panel">
+        <div className="auth-lang"><LangSwitch /></div>
         <div className="auth-card">
           <div className="auth-lockup product-title"><strong>Cobalt</strong><span className="product-sub">MRP</span></div>
           <BrandMark large />
-          <h2>{title}</h2>
-          {intro && <p className="muted auth-intro">{intro}</p>}
+          <h2>{t(title)}</h2>
+          {intro && <p className="muted auth-intro">{t(intro)}</p>}
           {children}
         </div>
       </section>
@@ -67,6 +70,7 @@ function CredentialsForm({ submitLabel, busy, error, onSubmit, confirm }: {
   submitLabel: string; busy: boolean; error?: string; confirm?: boolean;
   onSubmit: (username: string, password: string) => void;
 }) {
+  const t = useT();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [again, setAgain] = useState('');
@@ -79,23 +83,23 @@ function CredentialsForm({ submitLabel, busy, error, onSubmit, confirm }: {
   return (
     <form className="auth-form" onSubmit={submit}>
       <div className="field">
-        <label htmlFor="auth-user">Username</label>
+        <label htmlFor="auth-user">{t('Username')}</label>
         <input id="auth-user" autoComplete="username" autoFocus required value={username} onChange={(e) => setUsername(e.target.value)} />
       </div>
       <div className="field">
-        <label htmlFor="auth-pass">Password</label>
+        <label htmlFor="auth-pass">{t('Password')}</label>
         <input id="auth-pass" type="password" autoComplete={confirm ? 'new-password' : 'current-password'} required minLength={confirm ? 8 : undefined} value={password} onChange={(e) => setPassword(e.target.value)} />
-        {confirm && <span className="hint">At least 8 characters.</span>}
+        {confirm && <span className="hint">{t('At least 8 characters.')}</span>}
       </div>
       {confirm && (
         <div className="field">
-          <label htmlFor="auth-pass2">Confirm password</label>
+          <label htmlFor="auth-pass2">{t('Confirm password')}</label>
           <input id="auth-pass2" type="password" autoComplete="new-password" required value={again} onChange={(e) => setAgain(e.target.value)} />
-          {mismatch && <span className="hint err">Passwords do not match.</span>}
+          {mismatch && <span className="hint err">{t('Passwords do not match.')}</span>}
         </div>
       )}
       {error && <div className="alert danger" role="alert">{error}</div>}
-      <button type="submit" className="btn primary lg auth-submit" disabled={busy || mismatch}>{busy ? 'Please wait…' : submitLabel}</button>
+      <button type="submit" className="btn primary lg auth-submit" disabled={busy || mismatch}>{busy ? t('Please wait…') : t(submitLabel)}</button>
     </form>
   );
 }

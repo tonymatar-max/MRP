@@ -41,8 +41,8 @@ cd web && npm install && npm run dev             # http://localhost:5173 (proxie
 - `tests/` engine, Service Layer client and AI assistant tests
 
 ## AI assistant (optional, read-only)
-Settings > **AI** (Admin) turns on an assistant that explains a saved run. It uses OpenRouter (any model with tool calling; default `anthropic/claude-sonnet-4.5`) with **your own API key**: the key is encrypted at rest like the Service Layer password, never returned by the API, and a blank field keeps the stored key. **Test connection** sends one tiny request; **Load models** fills the model list from OpenRouter.
-- **Ask AI** (Dashboard, Planned Orders, Exceptions): a chat drawer for the selected run with starter questions, "Based on N lookups" (what data it used), Copy, and the note *AI can be wrong; check the order before acting.* **Summarise this run** (Dashboard) gives a short plain-language summary of what needs attention first.
+Settings > **AI** (Admin) turns on an assistant that explains a saved run. It uses OpenRouter (any model with tool calling; default `anthropic/claude-opus-5`; choose **up to five models**: the first is primary, the others are fallbacks OpenRouter tries in order if it is down or rate-limited) with **your own API key**: the key is encrypted at rest like the Service Layer password, never returned by the API, and a blank field keeps the stored key. **Test connection** sends one tiny request; **Load models** fills the model list from OpenRouter.
+- **Ask AI** (Dashboard, Planned Orders, Exceptions): a chat drawer for the selected run with starter questions, "Based on N lookups" (what data it used), Copy, and the note *AI can be wrong; check the order before acting.* **Summarise this run** (Dashboard) gives a short plain-language summary of what needs attention first. Each exception and planned-order row has an **Explain** button, and the Exceptions page has **Triage** (the five to handle first, and why). They only ask the assistant a question.
 - It answers only from six **read-only** lookups (run summary, planned orders, pegging, exceptions, item, calendar events). It has **no write tools at all**: it cannot create, release, execute, move or edit anything; it suggests actions in words and you click Execute yourself.
 - **Privacy:** plan data returned by those lookups (item codes, quantities, dates, supplier codes) is sent to OpenRouter and the model provider you choose. No connection strings, settings, secrets or user passwords are sent. Each call is logged (user, run, model, token usage, tool names) without the key or the question text; 20 calls a minute per user.
 - Off by default; when off (or without a key) the buttons are hidden (administrators see an "Enable AI in Settings" hint). Details: `docs/ai-contract.md`.
@@ -83,6 +83,9 @@ SAP B1 holds a lead time on the **item** (`OITM.LeadTime`) and on the **item gro
 **Overrides are stored in Cobalt MRP and used by planning. They never change SAP Business One.** The default supplier set here is the one purchase orders use (it beats B1's preferred vendor).
 Supplier precedence for a purchase order: an entry in Settings > Service Layer (legacy) > the item's default supplier in Master data > SAP B1's preferred vendor > the Settings default vendor.
 
+## Exceptions: new since the last run
+The Exceptions page marks exceptions that the run before it did not have with a **New** badge and a **New (n)** filter, so a planner starts with what changed. Two exceptions are "the same" when type, item, warehouse and source document line match.
+
 ## Exceptions: Execute
 Each exception that has a well-defined action shows an **Execute** button (Admin only; Planners see it disabled). It always opens a dialog first:
 - **Preview** reads the live SAP B1 document and shows current against proposed, with warnings (for example "already received in part") and blockers (write-back off, order not open, no supplier).
@@ -99,8 +102,17 @@ Each exception that has a well-defined action shows an **Execute** button (Admin
 ## Calendar
 The Calendar screen shows everything dated in a run: sales orders due, forecasts, open purchase/production orders, recommended releases and due dates, planner action messages, capacity overloads, and non-working days. Month, week and agenda views; filter by kind, item and warehouse; click a day for its list with links to the orders. Events are stored with each run (table `CalendarEvent`), so the calendar always matches the plan it came from. Overdue items sit on the first day of the horizon.
 
+## SAP push log
+Every write to SAP B1 (create purchase order / purchase request / transfer request / production order, move a due date, close or cancel, Service Layer session failure) is recorded permanently with who, when, run, item, quantity, the SAP document (for example `OPOR:1187`), a summary and SAP's complete error message. Page **Data > SAP push log** (filters, CSV export), `GET /api/sap-log`. The log is add-only and never stores passwords or request bodies. Details: `docs/sap-log-contract.md`.
+
+## Supplier lead-time import
+**Master data > Suppliers > Import CSV** loads lead times (and notes) from a CSV with `CardCode`, `LeadTimeDays`, `Notes` (comma, semicolon or tab separated; a template can be downloaded). The file is checked first (unknown supplier, duplicate, bad number) and nothing is saved until you press Apply; blank cells leave the stored value alone. Stored in Cobalt MRP only.
+
+## Appearance and language
+A topbar button switches **Match system / Light / Dark**, and an **EN / عربي** switch changes the language and mirrors the layout right-to-left (`dir="rtl"`, as in the Cobalt design system). Both choices are remembered in the browser. To translate more screens, wrap the English text in `t('...')` (`web/src/i18n`) and add the Arabic to `web/src/i18n/ar.ts`; anything without a translation just stays English.
+
 ## Release to B1
-Release firms the selected orders and saves them, then (if enabled) creates the documents through the Service Layer one by one. Failures are reported per order and do not block the others; orders already pushed are skipped on retry, so re-releasing never creates duplicates. Purchase-order vendors come from Settings (a default plus per-item overrides).
+Release firms the selected orders and saves them, then (if enabled) creates the documents through the Service Layer one by one. Failures are reported per order and do not block the others; orders already pushed are skipped on retry, so re-releasing never creates duplicates, even if a release is cancelled part-way (documents already created are remembered and logged). Purchase-order vendors come from Settings (a default plus per-item overrides).
 
 ## Upgrading
 Publish over the top and restart the service. The database is brought forward automatically at startup (new tables and columns are added in place, for example the master-data override tables and the exception audit columns; nothing is dropped). Settings, users and keys in `data\` are kept.
@@ -108,6 +120,7 @@ Publish over the top and restart the service. The database is brought forward au
 ## Status / known gaps
 - Persistence, settings, auth, vendors and the calendar were verified on SQL Server 2022, with the published exe, and read-only against the real B1 demo company `SBODemoHO`.
 - Write-back was verified against a **fake** Service Layer in automated tests. The production-order payload fields (`ItemNo`, `PlannedQuantity`, ...) are from the documented API shape; confirm on your live system.
+- Arabic is partial: the shell, sign-in, Dashboard, Planned Orders, Exceptions and SAP push log are translated; Settings, the run wizard, Calendar, Capacity, Forecasts, Master data and the Execute dialogs are still English (they show English text inside the right-to-left layout). The Arabic wording has not been reviewed by a native speaker.
 - Not available from B1, so not modelled except through Settings: setup time, real capacity and efficiency per resource.
 - Cobalt-managed forecasts apply to mock runs; `b1-sql` runs use B1's own forecasts.
 - This follows the standard captured in the `cobalt-service-standard` skill.

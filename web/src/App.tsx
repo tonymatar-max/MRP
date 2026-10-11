@@ -7,6 +7,7 @@ import { RunProvider, useSelectedRun } from './components/RunContext';
 import { AiDrawer, AiPanelProvider } from './components/AiAssistant';
 import { BrandMark } from './components/ui';
 import { ThemeToggle } from './components/theme';
+import { LangSwitch, useT } from './i18n';
 import Calendar from './pages/Calendar';
 import Capacity from './pages/Capacity';
 import Dashboard from './pages/Dashboard';
@@ -33,6 +34,7 @@ const DISMISS_KEY = 'cobalt-mrp-memory-banner-dismissed';
 const readDismissed = () => { try { return sessionStorage.getItem(DISMISS_KEY) === '1'; } catch { return false; } };
 
 function StatusBanner() {
+  const t = useT();
   const { isAdmin } = useAuth();
   const status = useStatus().data;
   const [dismissed, setDismissed] = useState(readDismissed);
@@ -42,17 +44,18 @@ function StatusBanner() {
     <div className="banner warn" role="alert">
       <span className="banner-ico" aria-hidden="true">⚠</span>
       <div className="banner-text">
-        <strong>Runs are not saved.</strong>{' '}
+        <strong>{t('Runs are not saved.')}</strong>{' '}
         {isAdmin
-          ? <>The Cobalt database is not configured, so everything is held in memory and lost on restart. <Link to="/settings">Configure the Cobalt database in Settings</Link>.</>
-          : <>The Cobalt database is not configured. Ask an administrator to set it up in Settings.</>}
+          ? <>{t('The Cobalt database is not configured, so everything is held in memory and lost on restart.')} <Link to="/settings">{t('Configure the Cobalt database in Settings')}</Link>.</>
+          : <>{t('The Cobalt database is not configured. Ask an administrator to set it up in Settings.')}</>}
       </div>
-      <button type="button" className="btn sm" onClick={dismiss}>Dismiss</button>
+      <button type="button" className="btn sm" onClick={dismiss}>{t('Dismiss')}</button>
     </div>
   );
 }
 
 function Sidebar() {
+  const t = useT();
   const { isAdmin } = useAuth();
   const { runId } = useSelectedRun();
   const run = useRun(runId).data;
@@ -63,15 +66,15 @@ function Sidebar() {
   let lastGroup = '';
   return (
     <aside className="sidebar">
-      <nav className="nav" aria-label="Main">
+      <nav className="nav" aria-label={t('Main')}>
         {NAV.filter((n) => !n.adminOnly || isAdmin).map((n) => {
-          const label = n.group !== lastGroup ? <div className="nav-label">{n.group}</div> : null;
+          const label = n.group !== lastGroup ? <div className="nav-label">{t(n.group)}</div> : null;
           lastGroup = n.group;
           return (
             <Fragment key={n.to}>
               {label}
               <NavLink to={n.to} end={n.end} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
-                <span>{n.label}</span>
+                <span>{t(n.label)}</span>
                 {counts[n.to] != null && <span className="count">{counts[n.to]}</span>}
               </NavLink>
             </Fragment>
@@ -84,6 +87,7 @@ function Sidebar() {
 }
 
 function Shell() {
+  const t = useT();
   const { user, isAdmin, signOut } = useAuth();
   return (
     <RunProvider>
@@ -95,13 +99,14 @@ function Shell() {
             <div className="product-title"><strong>Cobalt</strong><span className="product-sub">MRP</span></div>
           </div>
           <div className="spacer" />
-          <span className={`env-chip ${USE_MOCK ? 'mock' : ''}`}><span className="led" />{USE_MOCK ? 'Mock data' : 'Live API'}</span>
+          <span className={`env-chip ${USE_MOCK ? 'mock' : ''}`}><span className="led" />{USE_MOCK ? t('Mock data') : t('Live API')}</span>
+          <LangSwitch />
           <ThemeToggle />
           <div className="user-btn">
             <div className="avatar" aria-hidden="true">{user.username.slice(0, 1).toUpperCase()}</div>
-            <div className="who"><b>{user.username}</b><small>{user.role}</small></div>
+            <div className="who"><b>{user.username}</b><small>{t(user.role)}</small></div>
           </div>
-          <button type="button" className="btn sm signout" onClick={signOut}>Sign out</button>
+          <button type="button" className="btn sm signout" onClick={signOut}>{t('Sign out')}</button>
         </header>
         <Sidebar />
         <main className="main">

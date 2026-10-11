@@ -9,23 +9,25 @@ import { useAuth } from '../components/Auth';
 import { RunPicker } from '../components/RunPicker';
 import { AskAiButton, ExplainButton } from '../components/AiAssistant';
 import { useSelectedRun } from '../components/RunContext';
+import { useT } from '../i18n';
 import { fmtDate, fmtNum, isPast, ORDER_TYPES, orderTypeLabel, orderTypeTag, sortBy, SortDir } from '../components/util';
 
 function Pegging({ runId, id }: { runId: string; id: string }) {
+  const tr = useT();
   const q = useQuery({ queryKey: ['peg', runId, id], queryFn: () => api.getPegging(runId, id) });
-  if (q.isLoading) return <span className="muted">Loading pegging…</span>;
-  if (!q.data?.length) return <span className="muted">No pegging.</span>;
+  if (q.isLoading) return <span className="muted">{tr('Loading pegging…')}</span>;
+  if (!q.data?.length) return <span className="muted">{tr('No pegging.')}</span>;
   return (
     <>
-      <div className="section-title">Pegging — why this order exists</div>
+      <div className="section-title">{tr('Pegging — why this order exists')}</div>
       <div className="pegging-grid">
         {q.data.map((p, i) => (
           <div className="peg" key={i}>
             <div className="src">{p.demandSource}</div>
             <div>{p.demandDocKey}</div>
             <div className="muted">
-              {fmtNum(p.quantity)} needed {fmtDate(p.demandDueDate)}
-              {p.parentItemCode ? ` · parent ${p.parentItemCode}` : ''}
+              {tr('{qty} needed {date}', { qty: fmtNum(p.quantity), date: fmtDate(p.demandDueDate) })}
+              {p.parentItemCode ? ` · ${tr('parent {item}', { item: p.parentItemCode })}` : ''}
             </div>
           </div>
         ))}
@@ -51,6 +53,7 @@ function Vendor({ o }: { o: PlannedOrder }) {
 }
 
 export default function PlannedOrders() {
+  const tr = useT();
   const { runId } = useSelectedRun();
   const { isAdmin } = useAuth();
   const run = useRun(runId);
@@ -87,7 +90,7 @@ export default function PlannedOrders() {
 
   const th = (key: keyof PlannedOrder, label: string, cls = '') => (
     <th className={cls} onClick={() => { if (sortKey === key) setDir(dir === 'asc' ? 'desc' : 'asc'); else { setSortKey(key); setDir('asc'); } }}>
-      {label}{sortKey === key && <span className="arrow">{dir === 'asc' ? '▲' : '▼'}</span>}
+      {tr(label)}{sortKey === key && <span className="arrow">{dir === 'asc' ? '▲' : '▼'}</span>}
     </th>
   );
 
@@ -124,21 +127,21 @@ export default function PlannedOrders() {
       <PageHeader
         crumb="Planning"
         title="Planned Orders"
-        actions={<><RunPicker /><AskAiButton /><button className="btn primary" disabled={!isAdmin || !sel.size || release.isPending} title={!isAdmin ? 'Only administrators can release orders to SAP B1' : noVendorSel ? `${noVendorSel} selected purchase order(s) have no vendor and will fail to release` : undefined} onClick={doRelease}>
-          {release.isPending ? 'Releasing…' : `Release to SAP B1 (${sel.size})`}
+        actions={<><RunPicker /><AskAiButton /><button className="btn primary" disabled={!isAdmin || !sel.size || release.isPending} title={!isAdmin ? tr('Only administrators can release orders to SAP B1') : noVendorSel ? tr('{n} selected purchase order(s) have no vendor and will fail to release', { n: noVendorSel }) : undefined} onClick={doRelease}>
+          {release.isPending ? tr('Releasing…') : tr('Release to SAP B1 ({n})', { n: sel.size })}
         </button></>}
       />
       <div className="page">
         <div className="toolbar">
-          <div className="field"><label>Item</label><input className="search" placeholder="Search item…" value={item} onChange={(e) => setItem(e.target.value)} /></div>
-          <div className="field"><label>Warehouse</label>
-            <select value={wh} onChange={(e) => setWh(e.target.value)}><option value="">All</option>{warehouses.map((w) => <option key={w}>{w}</option>)}</select></div>
-          <div className="field"><label>Type</label>
-            <select value={type} onChange={(e) => setType(e.target.value)}><option value="">All</option>{ORDER_TYPES.map((t) => <option key={t} value={t}>{orderTypeLabel(t)}</option>)}</select></div>
-          <div className="field"><label>Release from</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
-          <div className="field"><label>Release to</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
+          <div className="field"><label>{tr('Item')}</label><input className="search" placeholder={tr('Search item…')} value={item} onChange={(e) => setItem(e.target.value)} /></div>
+          <div className="field"><label>{tr('Warehouse')}</label>
+            <select value={wh} onChange={(e) => setWh(e.target.value)}><option value="">{tr('All')}</option>{warehouses.map((w) => <option key={w}>{w}</option>)}</select></div>
+          <div className="field"><label>{tr('Type')}</label>
+            <select value={type} onChange={(e) => setType(e.target.value)}><option value="">{tr('All')}</option>{ORDER_TYPES.map((t) => <option key={t} value={t}>{tr(orderTypeLabel(t))}</option>)}</select></div>
+          <div className="field"><label>{tr('Release from')}</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
+          <div className="field"><label>{tr('Release to')}</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
           <div className="spacer" />
-          <span className="muted">{rows.length} of {all.length} orders</span>
+          <span className="muted">{tr('{n} of {total} orders', { n: rows.length, total: all.length })}</span>
         </div>
         <div className="card">
           {run.isLoading && <Loading />}
@@ -161,14 +164,14 @@ export default function PlannedOrders() {
                         <td><Llc level={o.lowLevelCode} /></td>
                         <td className="mono">{o.itemCode}</td>
                         <td>{o.type === 'TransferRequest' && o.fromWarehouse ? <span title={`Transfer from ${o.fromWarehouse} to ${o.warehouseCode}`}>{o.fromWarehouse} → {o.warehouseCode}</span> : o.warehouseCode}</td>
-                        <td><span className={`type-tag ${orderTypeTag(o.type)}`}>{orderTypeLabel(o.type)}</span></td>
+                        <td><span className={`type-tag ${orderTypeTag(o.type)}`}>{tr(orderTypeLabel(o.type))}</span></td>
                         <td><Vendor o={o} /></td>
                         <td className="num"><LeadTime o={o} /></td>
                         <td className="num">{fmtNum(o.quantity)}</td>
                         <td style={isPast(o.releaseDate) ? { color: 'var(--danger)', fontWeight: 600 } : undefined}>{fmtDate(o.releaseDate)}</td>
                         <td>{fmtDate(o.dueDate)}</td>
                         <td>
-                          {o.firmed ? <Pill tone="ok">Firmed{o.b1DocEntry ? ` · ${o.b1DocEntry}` : ''}</Pill> : <Pill>Planned</Pill>}
+                          {o.firmed ? <Pill tone="ok">{tr('Firmed')}{o.b1DocEntry ? ` · ${o.b1DocEntry}` : ''}</Pill> : <Pill>{tr('Planned')}</Pill>}
                           <ExplainButton label={`${o.itemCode} ${orderTypeLabel(o.type)}`}
                             question={`Why was this planned order created? Planned order id ${o.id}: ${orderTypeLabel(o.type)} for item ${o.itemCode}, quantity ${fmtNum(o.quantity)}, warehouse ${o.warehouseCode}, due ${o.dueDate}. Show which demand it covers, how its quantity and dates were set (lead time, lot sizing), and anything I should double-check before releasing it.`} />
                         </td>

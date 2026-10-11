@@ -1,4 +1,5 @@
 import { ReactNode, useEffect } from 'react';
+import { useT } from '../i18n';
 import { EXCEPTION_META, llcColor } from './util';
 import type { ExceptionType } from '../api/types';
 
@@ -6,7 +7,9 @@ export function BrandMark({ large }: { large?: boolean }) {
   return <div className={`brand-mark${large ? ' large' : ''}`} aria-hidden="true"><span className="brand-node" /></div>;
 }
 
-export function Loading({ label = 'Loading…' }: { label?: string }) {
+export function Loading({ label }: { label?: string }) {
+  const t = useT();
+  label = t(label ?? 'Loadingâ€¦');
   return (
     <div className="sk-stack" role="status" aria-busy="true" aria-label={label}>
       <div className="sk" /><div className="sk" /><div className="sk" />
@@ -16,10 +19,11 @@ export function Loading({ label = 'Loading…' }: { label?: string }) {
 }
 
 export function Empty({ title, children }: { title: string; children?: ReactNode }) {
+  const t = useT();
   return (
     <div className="empty">
       <BrandMark large />
-      <h4>{title}</h4>
+      <h4>{t(title)}</h4>
       {children && <div>{children}</div>}
     </div>
   );
@@ -36,14 +40,15 @@ const KPI_ICON = {
 };
 
 export function Kpi({ label, value, meta, tone }: { label: string; value: ReactNode; meta?: ReactNode; tone?: 'warn' | 'danger' | 'ok' }) {
+  const t = useT();
   return (
     <div className="kpi">
       <div className="top">
-        <span>{label}</span>
+        <span>{t(label)}</span>
         <span className={`ico ${tone ?? ''}`}>{tone === 'ok' ? KPI_ICON.ok : tone ? KPI_ICON.warn : KPI_ICON.node}</span>
       </div>
       <div className="val">{value}</div>
-      {meta && <div className="foot">{meta}</div>}
+      {meta && <div className="foot">{typeof meta === 'string' ? t(meta) : meta}</div>}
     </div>
   );
 }
@@ -58,8 +63,9 @@ export function Pill({ tone, children }: { tone?: 'ok' | 'warn' | 'danger' | 'in
 }
 
 export function ExceptionPill({ type }: { type: ExceptionType }) {
+  const t = useT();
   const m = EXCEPTION_META[type];
-  return <Pill tone={m.tone}>{m.label}</Pill>;
+  return <Pill tone={m.tone}>{t(m.label)}</Pill>;
 }
 
 export function Llc({ level }: { level: number }) {
@@ -67,12 +73,14 @@ export function Llc({ level }: { level: number }) {
 }
 
 export function PageHeader({ crumb, title, actions }: { crumb?: string; title: string; actions?: ReactNode }) {
-  useEffect(() => { document.title = `${title} · Cobalt MRP`; }, [title]);
+  const t = useT();
+  const shownTitle = t(title);
+  useEffect(() => { document.title = `${shownTitle} Â· Cobalt MRP`; }, [shownTitle]);
   return (
     <div className="page-head">
       <div>
-        {crumb && <div className="crumb">{crumb}</div>}
-        <h1>{title}</h1>
+        {crumb && <div className="crumb">{t(crumb)}</div>}
+        <h1>{shownTitle}</h1>
       </div>
       <div className="actions">{actions}</div>
     </div>
