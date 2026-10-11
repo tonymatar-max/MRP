@@ -1,0 +1,20 @@
+# build output
+bin/
+obj/
+node_modules/
+dist/
+src/CobaltMrp.Api/wwwroot/
+publish/
+# runtime data and secrets: never commit
+data/
+*.db
+*.sqlite
+*.pfx
+.env
+.env.local
+appsettings.*.local.json
+# editor / OS
+.vs/
+.idea/
+*.user
+Thumbs.db

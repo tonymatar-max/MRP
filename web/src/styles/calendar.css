@@ -1,0 +1,90 @@
+/* ---------- Vendor badges (Planned Orders) ---------- */
+.vendor-badge { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; vertical-align: 1px; }
+.vendor-badge.b1-preferred { background: var(--accent-soft); color: var(--accent); }
+.vendor-badge.settings-override { background: var(--warn-soft); color: var(--warn); }
+.vendor-badge.default { background: var(--section); color: var(--muted); }
+.vendor-badge.none { background: var(--danger-soft); color: var(--danger); }
+
+/* ---------- Settings additions ---------- */
+.inline-field { display: flex; align-items: center; gap: 6px; }
+.inline-field label { font-size: 12px; font-weight: 600; color: var(--muted); }
+.day-set { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 12px 12px; margin: 0; }
+.day-set legend { font-size: 13px; font-weight: 600; padding: 0 6px; }
+.day-row { display: flex; flex-wrap: wrap; gap: 14px; }
+.day-check { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.edit-table input[type="number"] { max-width: 110px; }
+
+/* ---------- Calendar ---------- */
+:root {
+  --k-Demand: var(--accent); --k-Forecast: var(--brand-2); --k-Supply: var(--ok); --k-PlannedRelease: var(--orange);
+  --k-PlannedDue: var(--violet); --k-Exception: var(--warn); --k-CapacityOverload: var(--danger);
+}
+.kchip { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 18px; padding: 0 5px; border-radius: 9px; font-size: 11px; font-weight: 700; color: var(--white); line-height: 1; }
+.kchip.k-Demand { background: var(--k-Demand); }
+.kchip.k-Forecast { background: var(--white); color: var(--accent); border: 1.5px dashed var(--k-Forecast); }
+.kchip.k-Supply { background: var(--k-Supply); }
+.kchip.k-PlannedRelease { background: var(--k-PlannedRelease); }
+.kchip.k-PlannedDue { background: var(--k-PlannedDue); }
+.kchip.k-Exception { background: var(--k-Exception); }
+.kchip.k-CapacityOverload { background: var(--k-CapacityOverload); }
+.cal-toolbar { align-items: flex-end; }
+.cal-nav { display: flex; align-items: center; gap: 8px; }
+.cal-title { font-size: 17px; margin-left: 8px; min-width: 150px; }
+.cal-filters { margin: 4px 0 14px; align-items: center; }
+.kind-chip { display: inline-flex; align-items: center; gap: 6px; }
+.kind-chip .kdot { width: 9px; height: 9px; border-radius: 50%; background: var(--faint); }
+.kind-chip.on { background: var(--panel); color: var(--ink); border-color: var(--faint); }
+.kind-chip.on.k-Demand .kdot { background: var(--k-Demand); }
+.kind-chip.on.k-Forecast .kdot { background: var(--k-Forecast); }
+.kind-chip.on.k-Supply .kdot { background: var(--k-Supply); }
+.kind-chip.on.k-PlannedRelease .kdot { background: var(--k-PlannedRelease); }
+.kind-chip.on.k-PlannedDue .kdot { background: var(--k-PlannedDue); }
+.kind-chip.on.k-Exception .kdot { background: var(--k-Exception); }
+.kind-chip.on.k-CapacityOverload .kdot { background: var(--k-CapacityOverload); }
+.kind-chip:not(.on) { opacity: 0.6; }
+.cal-note { font-size: 12px; color: var(--faint); margin-bottom: 10px; }
+.cal-layout { display: grid; grid-template-columns: 1fr; gap: 16px; align-items: start; }
+.cal-layout.with-panel { grid-template-columns: minmax(0, 1fr) 340px; }
+.cal-card { position: relative; padding: 10px; transition: opacity 0.15s; }
+.cal-card.busy { opacity: 0.75; }
+.cal-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px; background: var(--scrim-light); color: var(--muted); }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.cal-dow { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--faint); padding: 4px 6px; }
+.cal-cell { position: relative; text-align: left; min-height: 84px; padding: 6px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); display: flex; flex-direction: column; gap: 4px; overflow: hidden; font-family: inherit; }
+.cal-grid.week .cal-cell { min-height: 220px; }
+.cal-cell:hover { border-color: var(--brand-2); }
+.cal-cell.other { background: var(--page); color: var(--faint); }
+.cal-cell.nonwork { background: repeating-linear-gradient(135deg, var(--page), var(--page) 6px, var(--section) 6px, var(--section) 12px); }
+.cal-cell.outside { opacity: 0.5; }
+.cal-cell.today { border: 2px solid var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.cal-cell.today .cal-num { background: var(--accent); color: var(--white); }
+.cal-cell.sel { background: var(--accent-soft); border-color: var(--accent); }
+.cal-num { align-self: flex-start; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 11px; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.cal-nw { font-size: 10px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-danger { position: absolute; top: 0; right: 0; width: 0; height: 0; border-style: solid; border-width: 0 18px 18px 0; border-color: transparent var(--danger) transparent transparent; }
+.cal-chips { display: flex; flex-wrap: wrap; gap: 3px; }
+.cal-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 14px; font-size: 12px; color: var(--muted); align-items: center; }
+.legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.legend-box { width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--line); }
+.legend-box.nonwork { background: repeating-linear-gradient(135deg, var(--page), var(--page) 3px, var(--line) 3px, var(--line) 6px); }
+.legend-box.today { border: 2px solid var(--accent); }
+.legend-corner { width: 0; height: 0; border-style: solid; border-width: 0 12px 12px 0; border-color: transparent var(--danger) transparent transparent; }
+.day-panel { position: sticky; top: 12px; max-height: calc(100vh - 40px); overflow-y: auto; }
+.day-group { margin-bottom: 14px; }
+.day-group h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.day-group ul, .agenda-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ev-row { border: 1px solid var(--line); border-left: 3px solid var(--brand-2); border-radius: var(--radius-sm); padding: 6px 9px; font-size: 12.5px; background: var(--panel); }
+.ev-row.sev-warn { border-left-color: var(--warn); }
+.ev-row.sev-danger { border-left-color: var(--danger); }
+.ev-label { color: var(--muted); }
+.ev-ref { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.agenda { list-style: none; margin: 0; padding: 0; }
+.agenda-day { padding: 8px 6px 12px; border-bottom: 1px solid var(--line); }
+.agenda-day.nonwork { background: var(--page); }
+.agenda-day.today .agenda-head strong { color: var(--accent); }
+.agenda-head { display: flex; align-items: center; gap: 12px; width: 100%; background: transparent; border: none; padding: 4px 0 8px; text-align: left; font-size: 13px; }
+@media (max-width: 1100px) {
+  .cal-layout.with-panel { grid-template-columns: 1fr; }
+  .day-panel { position: static; max-height: none; }
+  .cal-cell { min-height: 72px; }
+}

@@ -1,0 +1,21 @@
+/* ---------- Settings ---------- */
+.settings-page > * { max-width: 980px; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 18px; overflow-x: auto; }
+.tab { padding: 10px 16px; border: none; background: transparent; color: var(--muted); font-weight: 600; font-size: 13px; border-bottom: 3px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+.tab:hover { color: var(--ink); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tab-panel { display: flex; flex-direction: column; gap: 16px; margin-bottom: 18px; }
+.form-stack { display: flex; flex-direction: column; gap: 14px; }
+.check-row { display: flex; align-items: flex-start; gap: 9px; }
+.check-row input { margin-top: 3px; }
+.check-row label { display: flex; flex-direction: column; gap: 2px; font-weight: 600; font-size: 13px; }
+.advanced summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 13px; margin-bottom: 8px; }
+.advanced textarea { width: 100%; resize: vertical; }
+.edit-table td { padding: 6px 8px; }
+.edit-table input { width: 100%; }
+.row-actions { text-align: right; }
+.row-actions .btn + .btn { margin-left: 8px; }
+@media (max-width: 1100px) {
+  .page, .page-head { padding-left: 18px; padding-right: 18px; }
+}
