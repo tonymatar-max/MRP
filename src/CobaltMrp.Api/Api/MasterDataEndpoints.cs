@@ -20,6 +20,11 @@ public sealed record MasterItemRow(
 public sealed record BulkRequest(string[]? ItemCodes, ItemOverride? Set, string[]? Clear);
 public sealed record SupplierRow(string CardCode, string? CardName, int? LeadTimeDays, string Notes, int ItemCount, string? UpdatedBy, DateTimeOffset? UpdatedAt);
 public sealed record SupplierEdit(int? LeadTimeDays, string? Notes);
+/// <summary>One line of a supplier lead-time file. Values arrive as text so a bad cell is reported on its own line.</summary>
+public sealed record SupplierImportRow(int Line, string? CardCode, string? LeadTimeDays, string? Notes);
+public sealed record SupplierImportRequest(List<SupplierImportRow>? Rows);
+/// <summary>Status is "change" (will be / was applied), "same" (nothing to change) or "error".</summary>
+public sealed record SupplierImportResult(int Line, string CardCode, string Status, string Message, int? Before, int? After);
 
 /// <summary>
 /// Master data for planning: SAP B1's item and supplier data with the planner's Cobalt-side overrides on top.
@@ -147,6 +152,62 @@ public static class MasterDataEndpoints
             var page = Math.Max(1, Int(q["page"], 1));
             var size = Math.Clamp(Int(q["pageSize"], 100), 10, 500);
             return Results.Ok(new { total = rows.Count, page, pageSize = size, suppliers = rows.Skip((page - 1) * size).Take(size).ToList() });
+        });
+
+        // Bulk lead-time import. dryRun=true checks and reports without saving; Cobalt-side only, SAP B1 is never written.
+        // A blank lead time or blank notes cell leaves that field as it is.
+        g.MapPost("/suppliers/import", async (string? source, bool? dryRun, SupplierImportRequest req, HttpContext ctx,
+            ProviderFactory providers, IMasterStore store, CancellationToken ct) =>
+        {
+            const int MaxRows = 5000;
+            if (req?.Rows is null || req.Rows.Count == 0) return Results.BadRequest(new { message = "The file has no rows." });
+            if (req.Rows.Count > MaxRows) return Results.BadRequest(new { message = $"At most {MaxRows} rows can be imported at once." });
+            var (m, error) = await LoadMaster(providers, source, ct);
+            if (m is null) return Results.BadRequest(new { message = error });
+
+            var known = m.Suppliers.ToDictionary(x => x.CardCode, StringComparer.OrdinalIgnoreCase);
+            var current = await store.GetSupplierSettingsAsync(ct);
+            var seen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var results = new List<SupplierImportResult>();
+            var toSave = new List<SupplierSetting>();
+            var user = ctx.User.Identity?.Name ?? "";
+
+            foreach (var r in req.Rows)
+            {
+                var code = (r.CardCode ?? "").Trim();
+                SupplierImportResult Err(string msg) => new(r.Line, code, "error", msg, null, null);
+                if (code.Length == 0) { results.Add(Err("The supplier code is empty.")); continue; }
+                if (!known.TryGetValue(code, out var sup)) { results.Add(Err("This supplier is not in the data source.")); continue; }
+                if (seen.TryGetValue(sup.CardCode, out var first)) { results.Add(Err($"Duplicate of line {first}: only the first one is used.")); continue; }
+                seen[sup.CardCode] = r.Line;
+
+                current.TryGetValue(sup.CardCode, out var before);
+                int? newLt = before?.LeadTimeDays;
+                var text = (r.LeadTimeDays ?? "").Trim();
+                if (text.Length > 0)
+                {
+                    if (!int.TryParse(text, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var days) || days < 0 || days > 3650)
+                    { results.Add(Err($"Lead time '{text}' must be a whole number from 0 to 3650.")); continue; }
+                    newLt = days;
+                }
+                var notes = (r.Notes ?? "").Trim();
+                if (notes.Length > 1000) { results.Add(Err("The note is longer than 1000 characters.")); continue; }
+                var newNotes = notes.Length > 0 ? notes : before?.Notes ?? "";
+
+                if (newLt == before?.LeadTimeDays && newNotes == (before?.Notes ?? ""))
+                { results.Add(new(r.Line, sup.CardCode, "same", "Already has these values.", before?.LeadTimeDays, newLt)); continue; }
+
+                results.Add(new(r.Line, sup.CardCode, "change", before is null ? "New lead time." : "Updated.", before?.LeadTimeDays, newLt));
+                toSave.Add(new SupplierSetting { CardCode = sup.CardCode, LeadTimeDays = newLt, Notes = newNotes, UpdatedBy = user, UpdatedAt = DateTimeOffset.UtcNow });
+            }
+
+            var dry = dryRun ?? false;
+            if (!dry) foreach (var s in toSave) await store.SaveSupplierAsync(s, ct);
+            return Results.Ok(new
+            {
+                dryRun = dry, applied = dry ? 0 : toSave.Count, willChange = toSave.Count,
+                same = results.Count(x => x.Status == "same"), errors = results.Count(x => x.Status == "error"), results,
+            });
         });
 
         g.MapPut("/suppliers/{cardCode}", async (string cardCode, string? source, SupplierEdit body, HttpContext ctx,

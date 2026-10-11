@@ -20,7 +20,7 @@ import * as msl from '../mocks/saplog';
 import * as md from '../mocks/masterdata';
 import * as mex from '../mocks/exceptions';
 import * as mpd from '../mocks/previewDetails';
-import type { ExecutePayload, ExecutePreview, ExecuteRequest, ExecuteResult, SapLogEntry, SapLogQuery } from './types';
+import type { ExecutePayload, ExecutePreview, ExecuteRequest, ExecuteResult, SapLogEntry, SapLogQuery, SupplierImportResponse, SupplierImportRow } from './types';
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string) || '/api';
 export const USE_MOCK =
@@ -154,6 +154,10 @@ export const api = {
   async listMasterSuppliers(q: MasterSupplierQuery): Promise<MasterSupplierPage> {
     if (USE_MOCK) return mocked(() => md.listSuppliers(q), 250);
     return http<MasterSupplierPage>(`/masterdata/suppliers?${qs({ ...q } as Record<string, string | number | undefined>)}`);
+  },
+  async importMasterSuppliers(source: DataSource, rows: SupplierImportRow[], dryRun: boolean): Promise<SupplierImportResponse> {
+    if (USE_MOCK) return mocked(() => md.importSuppliers(rows, dryRun), 400);
+    return post<SupplierImportResponse>(`/masterdata/suppliers/import?${qs({ source, dryRun: String(dryRun) })}`, { rows });
   },
   async putMasterSupplier(cardCode: string, body: { leadTimeDays: number | null; notes: string }): Promise<MasterSupplierRow> {
     if (USE_MOCK) return mocked(() => md.putSupplier(cardCode, body), 200);

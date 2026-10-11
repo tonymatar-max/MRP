@@ -4,6 +4,7 @@ import type { DataSource, MasterSupplierQuery, MasterSupplierRow } from '../../a
 import { useDebounced } from '../useDebounced';
 import { ErrorState, Loading } from '../ui';
 import { CellButton, InlineInput } from './cells';
+import { SupplierImportDialog } from './SupplierImportDialog';
 
 type Quick = NonNullable<MasterSupplierQuery['filter']>;
 const QUICK: { id: Quick; label: string }[] = [
@@ -17,6 +18,7 @@ export function SuppliersGrid({ source }: { source: DataSource }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
   const [editing, setEditing] = useState<{ code: string; field: 'lt' | 'notes' } | null>(null);
+  const [importing, setImporting] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const query: MasterSupplierQuery = useMemo(() => ({ source, search: dSearch.trim() || undefined, filter, page, pageSize }), [source, dSearch, filter, page, pageSize]);
   const q = useMasterSuppliers(query);
@@ -51,6 +53,7 @@ export function SuppliersGrid({ source }: { source: DataSource }) {
           {QUICK.map((f) => <button key={f.id} type="button" className={`chip ${filter === f.id ? 'on' : ''}`} aria-pressed={filter === f.id} onClick={() => setFilter(f.id)}>{f.label}</button>)}
         </div>
         <div className="spacer" />
+        <button type="button" className="btn" onClick={() => setImporting(true)}>Import CSV</button>
         <span className="muted">{total.toLocaleString()} supplier{total === 1 ? '' : 's'}</span>
       </div>
       {msg && <div className={`alert ${msg.ok ? 'ok' : 'danger'}`} role={msg.ok ? 'status' : 'alert'} style={{ marginBottom: 12 }}>{msg.text}</div>}
@@ -98,6 +101,7 @@ export function SuppliersGrid({ source }: { source: DataSource }) {
           <button type="button" className="btn sm" disabled={page >= pages} onClick={() => setPage(page + 1)}>Next</button>
         </div>
       </div>
+      {importing && <SupplierImportDialog source={source} onClose={() => setImporting(false)} />}
       <p className="hint" style={{ marginTop: 10 }}>SAP Business One holds no supplier lead time, so it is entered here. When the lead time rule includes Supplier, this value is used for every item bought from that supplier.</p>
     </>
   );

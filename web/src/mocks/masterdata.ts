@@ -265,6 +265,28 @@ export function putSupplier(card: string, body: { leadTimeDays: number | null; n
   return supRow(s);
 }
 
+export function importSuppliers(rows: { line: number; cardCode: string; leadTimeDays: string; notes: string }[], dryRun: boolean) {
+  adm.requireSignedIn();
+  if (!rows.length) throw err('The file has no rows.');
+  const seen = new Set<string>(); const results: { line: number; cardCode: string; status: 'change' | 'same' | 'error'; message: string; before: number | null; after: number | null }[] = [];
+  for (const r of rows) {
+    const code = r.cardCode.trim(); const bad = (m: string) => results.push({ line: r.line, cardCode: code, status: 'error', message: m, before: null, after: null });
+    if (!code) { bad('The supplier code is empty.'); continue; }
+    const s = SUPPLIERS.find((x) => x.cardCode.toLowerCase() === code.toLowerCase());
+    if (!s) { bad('This supplier is not in the data source.'); continue; }
+    if (seen.has(s.cardCode)) { bad('Duplicate: only the first one is used.'); continue; }
+    seen.add(s.cardCode);
+    const cur = supplierLt.get(s.cardCode); let lt = cur?.leadTimeDays ?? null; const t = r.leadTimeDays.trim();
+    if (t) { const n = Number(t); if (!Number.isInteger(n) || n < 0 || n > 3650) { bad(`Lead time '${t}' must be a whole number from 0 to 3650.`); continue; } lt = n; }
+    const notes = r.notes.trim() || cur?.notes || '';
+    if (lt === (cur?.leadTimeDays ?? null) && notes === (cur?.notes ?? '')) { results.push({ line: r.line, cardCode: s.cardCode, status: 'same', message: 'Already has these values.', before: cur?.leadTimeDays ?? null, after: lt }); continue; }
+    results.push({ line: r.line, cardCode: s.cardCode, status: 'change', message: cur ? 'Updated.' : 'New lead time.', before: cur?.leadTimeDays ?? null, after: lt });
+    if (!dryRun) supplierLt.set(s.cardCode, { leadTimeDays: lt, notes, updatedBy: adm.currentUserName(), updatedAt: new Date().toISOString() });
+  }
+  const willChange = results.filter((x) => x.status === 'change').length;
+  return { dryRun, applied: dryRun ? 0 : willChange, willChange, same: results.filter((x) => x.status === 'same').length, errors: results.filter((x) => x.status === 'error').length, results };
+}
+
 // ----- lookups -----
 export function lookupGroups(source: DataSource): ItemGroupInfo[] {
   adm.requireSignedIn(); guardSource(source);

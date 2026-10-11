@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
 import type {
   AppSettings, BulkItemRequest, CalendarQuery, DataSource, Forecast, MasterItemQuery, MasterOverride, MasterSupplierQuery, NewUser,
-  ExceptionMessage, RunCriteria, SapLogQuery, PreviewDetailsRequest, TriggerRunRequest, ExecuteRequest, ExecutePayload,
+  ExceptionMessage, RunCriteria, SapLogQuery, SupplierImportRow, PreviewDetailsRequest, TriggerRunRequest, ExecuteRequest, ExecutePayload,
 } from './types';
 
 export function useRuns() {
@@ -243,4 +243,12 @@ export function useNewExceptions(runId: string | undefined) {
     const isNew = (e: ExceptionMessage) => !seen.has(exceptionKey(e));
     return { hasPrevious: true, count: cur.exceptions.filter((e) => e.actionStatus !== 'Done' && isNew(e)).length, isNew };
   }, [cur, prev]);
+}
+
+export function useImportSuppliers() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { source: DataSource; rows: SupplierImportRow[]; dryRun: boolean }) => api.importMasterSuppliers(v.source, v.rows, v.dryRun),
+    onSuccess: (r) => { if (!r.dryRun) { qc.invalidateQueries({ queryKey: ['md-suppliers'] }); qc.invalidateQueries({ queryKey: ['md-items'] }); } },
+  });
 }

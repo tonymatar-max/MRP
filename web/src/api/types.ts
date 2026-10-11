@@ -439,3 +439,8 @@ export interface SapLogEntry {
 export interface SapLogQuery {
   success?: boolean; action?: SapPushAction | ''; item?: string; user?: string; from?: string; to?: string; limit?: number;
 }
+
+// ----- supplier lead-time import -----
+export interface SupplierImportRow { line: number; cardCode: string; leadTimeDays: string; notes: string }
+export interface SupplierImportResultRow { line: number; cardCode: string; status: 'change' | 'same' | 'error'; message: string; before: number | null; after: number | null }
+export interface SupplierImportResponse { dryRun: boolean; applied: number; willChange: number; same: number; errors: number; results: SupplierImportResultRow[] }
