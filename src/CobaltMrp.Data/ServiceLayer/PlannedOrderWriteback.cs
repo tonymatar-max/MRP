@@ -33,9 +33,11 @@ public sealed class PlannedOrderWriteback
 
     /// <summary>Push each firmed order; unfirmed orders and already-pushed orders are skipped.
     /// On success <see cref="PlannedOrder.B1DocEntry"/> is set on the order.</summary>
-    public async Task<WritebackSummary> PushAsync(IEnumerable<PlannedOrder> orders, CancellationToken ct = default)
+    /// <param name="into">Optional summary to fill in as each order finishes, so the caller still has the results
+    /// of the orders already created in SAP B1 if the batch is cancelled part-way.</param>
+    public async Task<WritebackSummary> PushAsync(IEnumerable<PlannedOrder> orders, CancellationToken ct = default, WritebackSummary? into = null)
     {
-        var summary = new WritebackSummary();
+        var summary = into ?? new WritebackSummary();
         foreach (var order in orders)
         {
             ct.ThrowIfCancellationRequested();

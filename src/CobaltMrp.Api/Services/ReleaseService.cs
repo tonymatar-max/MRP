@@ -29,10 +29,11 @@ public sealed class ReleaseService
         if (!enabled) return new ReleaseOutcome(false, 0, failures);
 
         using var client = new ServiceLayerClient(ServiceLayerSession.Options(sl));
+        var summary = new WritebackSummary();
         try
         {
             await client.LoginAsync(ct);
-            var summary = await new PlannedOrderWriteback(client, o => VendorResolver.Resolve(o, sl).Code).PushAsync(selected, ct);
+            await new PlannedOrderWriteback(client, o => VendorResolver.Resolve(o, sl).Code).PushAsync(selected, ct, summary);
             // Log first: these documents now exist in SAP B1 whatever happens to the saves below.
             await SapPushRecorder.RecordAsync(context, _log, summary.Results.Where(r => !WasSkipped(r)).Select(r => Entry(selected.FirstOrDefault(x => x.Id == r.PlannedOrderId), r)).ToList());
             pushed = summary.Succeeded.Count();
@@ -46,6 +47,16 @@ public sealed class ReleaseService
             }
             await store.SaveChangesAsync(ct);   // persists B1DocEntry for the ones that went through
             await client.LogoutAsync(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancelled part-way: documents already created in SAP B1 must still be logged and remembered
+            // (B1DocEntry), otherwise a retry would create them a second time.
+            await SapPushRecorder.RecordAsync(context, _log, summary.Results.Where(r => !WasSkipped(r))
+                .Select(r => Entry(selected.FirstOrDefault(x => x.Id == r.PlannedOrderId), r)).ToList());
+            try { await store.SaveChangesAsync(CancellationToken.None); }
+            catch (Exception ex) { _log.LogError(ex, "Could not save B1DocEntry after a cancelled release"); }
+            throw;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

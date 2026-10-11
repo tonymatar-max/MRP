@@ -1,14 +1,14 @@
 import { useState } from 'react';
-import { META } from '../api/client';
-import { useForecasts, useUpsertForecast } from '../api/hooks';
+import { useForecasts, useMasterItems, useStatus, useUpsertForecast, useWarehouses } from '../api/hooks';
+import { useDebounced } from '../components/useDebounced';
 import type { Forecast } from '../api/types';
 import { Dialog, ErrorState, Loading, PageHeader } from '../components/ui';
 import { fmtDate, fmtNum } from '../components/util';
 
 const blank = (): Forecast => ({
   id: '',
-  itemCode: META.ITEMS[0].code,
-  warehouseCode: META.WAREHOUSES[0],
+  itemCode: '',
+  warehouseCode: '',
   periodStart: new Date().toISOString().slice(0, 10),
   quantity: 0,
   consumed: 0,
@@ -19,9 +19,17 @@ export default function Forecasts() {
   const save = useUpsertForecast();
   const [edit, setEdit] = useState<Forecast | null>(null);
 
+  // Item and warehouse choices come from the planning data source (SAP B1 or the mock sample), not fixed lists.
+  const source = useStatus().data?.defaultSource ?? 'mock';
+  const whs = useWarehouses(source).data ?? [];
+  const dItem = useDebounced(edit?.itemCode ?? '', 250);
+  const items = useMasterItems({ source, search: dItem, pageSize: 20 }).data?.items ?? [];
+
   const [formErr, setFormErr] = useState('');
   const submit = () => {
     if (!edit) return;
+    if (!edit.itemCode.trim()) { setFormErr('Enter the item code.'); return; }
+    if (!edit.warehouseCode) { setFormErr('Choose the warehouse.'); return; }
     if (!Number.isFinite(edit.quantity) || edit.quantity < 0) { setFormErr('Quantity must be 0 or more.'); return; }
     if (!edit.periodStart) { setFormErr('Choose the period start date.'); return; }
     setFormErr('');
@@ -66,9 +74,11 @@ export default function Forecasts() {
         >
           <div className="form-row">
             <div className="field"><label>Item</label>
-              <select value={edit.itemCode} onChange={(e) => setEdit({ ...edit, itemCode: e.target.value })}>{META.ITEMS.map((i) => <option key={i.code}>{i.code}</option>)}</select></div>
+              <input list="fc-items" autoComplete="off" value={edit.itemCode} placeholder="Type to search items" onChange={(e) => setEdit({ ...edit, itemCode: e.target.value })} />
+              <datalist id="fc-items">{items.map((i) => <option key={i.itemCode} value={i.itemCode}>{i.itemName}</option>)}</datalist></div>
             <div className="field"><label>Warehouse</label>
-              <select value={edit.warehouseCode} onChange={(e) => setEdit({ ...edit, warehouseCode: e.target.value })}>{META.WAREHOUSES.map((w) => <option key={w}>{w}</option>)}</select></div>
+              <select value={edit.warehouseCode} onChange={(e) => setEdit({ ...edit, warehouseCode: e.target.value })}>
+                <option value="">Choose…</option>{whs.map((w) => <option key={w}>{w}</option>)}</select></div>
           </div>
           {(formErr || save.isError) && <div className="alert danger" role="alert">{formErr || (save.error as Error).message}</div>}
           <div className="form-row">

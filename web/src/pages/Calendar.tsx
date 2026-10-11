@@ -248,7 +248,7 @@ export default function Calendar() {
         )}
 
         <div className="cal-legend" aria-label="Legend">
-          {KINDS.map((k) => <span key={k.kind} className="legend-item"><span className={`kchip k-${k.kind}`}>n</span>{k.label}</span>)}
+          {KINDS.map((k) => <span key={k.kind} className="legend-item"><span className={`kchip k-${k.kind}`} aria-hidden="true">●</span>{k.label}</span>)}
           <span className="legend-item"><span className="legend-box nonwork" />Non-working day</span>
           <span className="legend-item"><span className="legend-box today" />Today</span>
           <span className="legend-item"><span className="legend-corner" />Overload / critical</span>

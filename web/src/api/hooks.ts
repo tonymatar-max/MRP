@@ -217,3 +217,8 @@ export function useAiStatus() {
 export function useSapLog(q: SapLogQuery) {
   return useQuery({ queryKey: ['sap-log', q], queryFn: () => api.listSapLog(q), staleTime: 0 });
 }
+
+/** Warehouses of the chosen data source (mock sample or SAP B1). */
+export function useWarehouses(source: DataSource) {
+  return useQuery({ queryKey: ['warehouses', source], queryFn: () => api.getWarehouses(source), staleTime: 60_000 });
+}
