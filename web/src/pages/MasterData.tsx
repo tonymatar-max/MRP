@@ -25,7 +25,7 @@ export default function MasterData() {
         }
       />
       <div className="page md-page">
-        <div className="alert info-note" role="note">Changes are stored in Cobalt MRP and used by planning. They do not change SAP Business One.</div>
+        <div className="alert info-note" role="note">Changes are stored in Cobalt MRP and used by planning. They do not change SAP Business One unless an administrator pushes them with Push to SAP B1 (you see a preview first).</div>
         <div className="tabs" role="tablist" aria-label="Master data">
           <button type="button" role="tab" id="tab-items" aria-selected={tab === 'items'} aria-controls="panel-items" className={`tab ${tab === 'items' ? 'active' : ''}`} onClick={() => setTab('items')}>Items</button>
           <button type="button" role="tab" id="tab-suppliers" aria-selected={tab === 'suppliers'} aria-controls="panel-suppliers" className={`tab ${tab === 'suppliers' ? 'active' : ''}`} onClick={() => setTab('suppliers')}>Suppliers</button>

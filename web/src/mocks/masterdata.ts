@@ -287,6 +287,60 @@ export function importSuppliers(rows: { line: number; cardCode: string; leadTime
   return { dryRun, applied: dryRun ? 0 : willChange, willChange, same: results.filter((x) => x.status === 'same').length, errors: results.filter((x) => x.status === 'error').length, results };
 }
 
+const PUSHABLE: [OverridableField, string][] = [
+  ['supplier', 'Default supplier'], ['leadTimeDays', 'Lead time (days)'], ['minOrderQty', 'Minimum order quantity'], ['orderMultiple', 'Order multiple'],
+  ['safetyStock', 'Safety stock (minimum inventory)'], ['maxStockLevel', 'Maximum inventory'], ['fixedLotSize', 'Fixed lot size (required inventory)'],
+];
+const COBALT_ONLY: OverridableField[] = ['reorderPoint', 'planningMethod', 'lotSizing', 'periodOfSupplyDays'];
+
+export function previewPush(codes: string[]) {
+  adm.requireSignedIn();
+  return {
+    ready: true, notReadyReason: null as string | null,
+    items: codes.map((code) => {
+      const b = BASE.find((x) => x.itemCode === code);
+      const o = overrides.get(code);
+      if (!b) return { itemCode: code, itemName: null, found: false, fields: [], cobaltOnly: [] as string[], error: `Item ${code} was not found in SAP B1.` };
+      const fields = PUSHABLE.flatMap(([f, label]) => {
+        const v = o?.[f];
+        if (v === null || v === undefined) return [];
+        const sap = b.b1[f as keyof MasterB1Values];
+        const same = f === 'supplier' ? String(sap ?? '') === String(v) : Number(sap) === Number(v);
+        const bad = f !== 'supplier' && Number(v) < 0;
+        return [{ field: f, label, cobalt: String(v), sap: sap == null ? null : String(sap), status: (bad ? 'blocked' : same ? 'same' : 'change') as 'change' | 'same' | 'blocked', message: bad ? 'The value cannot be negative.' : null }];
+      });
+      return { itemCode: code, itemName: b.itemName, found: true, fields, cobaltOnly: o ? COBALT_ONLY.filter((c) => o[c] !== null && o[c] !== undefined) as string[] : [], error: null };
+    }),
+  };
+}
+
+export function pushToSap(items: { itemCode: string; fields: { field: string; expectedSap: string | null; value: string }[] }[], clear: boolean) {
+  adm.requireSignedIn();
+  const out = items.map((it) => {
+    const b = BASE.find((x) => x.itemCode === it.itemCode);
+    if (!b) return { itemCode: it.itemCode, success: false, message: `Item ${it.itemCode} was not found in SAP B1.`, pushed: [] as string[] };
+    const changes: string[] = [];
+    for (const f of it.fields) {
+      const rec = b.b1 as unknown as Record<string, unknown>;
+      const now = rec[f.field];
+      if (f.expectedSap !== null && String(now ?? '') !== f.expectedSap && Number(now) !== Number(f.expectedSap))
+        return { itemCode: it.itemCode, success: false, message: `${f.field} changed in SAP B1 since the preview. Preview again.`, pushed: [] as string[] };
+    }
+    for (const f of it.fields) {
+      const rec = b.b1 as unknown as Record<string, unknown>;
+      changes.push(`${f.field} ${String(rec[f.field] ?? '(none)')} -> ${f.value}`);
+      rec[f.field] = f.field === 'supplier' ? f.value : Number(f.value);
+      if (f.field === 'supplier') b.b1.supplierName = supplierName(f.value);
+      const o = overrides.get(it.itemCode);
+      if (clear && o) (o as unknown as Record<string, unknown>)[f.field] = null;
+    }
+    const o = overrides.get(it.itemCode);
+    if (o && FIELDS.every((f) => o[f] === null || o[f] === undefined) && !o.notes) overrides.delete(it.itemCode);
+    return { itemCode: it.itemCode, success: true, message: changes.join('; '), pushed: it.fields.map((f) => f.field) };
+  });
+  return { pushed: out.filter((r) => r.success).length, failed: out.filter((r) => !r.success).length, items: out };
+}
+
 // ----- lookups -----
 export function lookupGroups(source: DataSource): ItemGroupInfo[] {
   adm.requireSignedIn(); guardSource(source);

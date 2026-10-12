@@ -9,6 +9,8 @@ public static class SapPushActions
     public const string CreateProductionOrder = "CreateProductionOrder";
     public const string MoveDueDate = "MoveDueDate";
     public const string CloseDocument = "CloseDocument";
+    /// <summary>The planner pushed Cobalt master-data overrides to the SAP B1 item master.</summary>
+    public const string UpdateItem = "UpdateItem";
     /// <summary>The Service Layer session itself failed (login, network), so no document was attempted.</summary>
     public const string Session = "Session";
 

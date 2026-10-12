@@ -83,6 +83,29 @@ public static class MasterDataEndpoints
             return Results.File(bytes, "text/csv; charset=utf-8", "master-data-items.csv");
         });
 
+        // Push the planner's overrides to the SAP B1 item master. Preview reads SAP B1 and changes nothing. Admin only.
+        g.MapPost("/items/push-to-sap/preview", async (PushPreviewRequest req, IMasterStore store, ItemPushService push, CancellationToken ct) =>
+        {
+            var codes = (req?.ItemCodes ?? new()).Where(c => !string.IsNullOrWhiteSpace(c)).Select(c => c.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (codes.Count == 0) return Results.BadRequest(new { message = "Select at least one item." });
+            if (codes.Count > 200) return Results.BadRequest(new { message = "At most 200 items can be pushed at once." });
+            try { return Results.Ok(await push.PreviewAsync(await store.GetItemOverridesAsync(ct), codes, ct)); }
+            catch (PushException e) { return Results.Json(new { message = e.Message }, statusCode: e.Status); }
+        }).RequireAuthorization("Admin");
+
+        g.MapPost("/items/push-to-sap", async (PushExecuteRequest req, HttpContext ctx, IMasterStore store, ISapPushLog pushLog, ItemPushService push,
+            ILogger<ItemPushService> log, CancellationToken ct) =>
+        {
+            var user = ctx.User.Identity?.Name ?? "";
+            try
+            {
+                var result = await push.ExecuteAsync(req, store, new PushContext(pushLog, user), ct);
+                log.LogInformation("Item master push by {User}: {Pushed} item(s) pushed, {Failed} failed", user, result.Pushed, result.Failed);
+                return Results.Ok(result);
+            }
+            catch (PushException e) { return Results.Json(new { message = e.Message }, statusCode: e.Status); }
+        }).RequireAuthorization("Admin");
+
         g.MapPut("/items/{itemCode}", async (string itemCode, string? source, ItemOverride body, HttpContext ctx,
             ProviderFactory providers, IMasterStore store, SettingsService settings, CancellationToken ct) =>
         {

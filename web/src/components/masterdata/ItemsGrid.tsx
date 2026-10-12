@@ -6,6 +6,8 @@ import { SupplierSearch } from '../SupplierSearch';
 import { useDebounced } from '../useDebounced';
 import { ErrorState, Loading } from '../ui';
 import { BulkEditDialog } from './BulkEditDialog';
+import { PushToSapDialog } from './PushToSapDialog';
+import { useAuth } from '../Auth';
 import { CellButton, InlineInput } from './cells';
 import { ItemEditPanel } from './ItemEditPanel';
 import { fmtVal, leadTimeTooltip, LT_SOURCE_LABEL, METHOD_LABEL, overrideBody } from './helpers';
@@ -44,6 +46,8 @@ export function ItemsGrid({ source }: { source: DataSource }) {
   const [editing, setEditing] = useState<{ code: string; field: OverridableField } | null>(null);
   const [panel, setPanel] = useState<string | null>(null);
   const [bulk, setBulk] = useState(false);
+  const [pushing, setPushing] = useState(false);
+  const { isAdmin } = useAuth();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busyCell, setBusyCell] = useState<string | null>(null);
 
@@ -130,6 +134,8 @@ export function ItemsGrid({ source }: { source: DataSource }) {
         {exportHref
           ? <a className="btn" href={exportHref} download>Export CSV</a>
           : <button type="button" className="btn" onClick={() => downloadCsv(api.exportMockCsv(query))}>Export CSV</button>}
+        <button type="button" className="btn" disabled={!sel.size || !isAdmin} title={isAdmin ? 'Write the selected items\' Cobalt overrides to the SAP B1 item master (you preview first)' : 'Only an administrator can push to SAP B1'}
+          onClick={() => setPushing(true)}>Push to SAP B1 ({sel.size})</button>
         <button type="button" className="btn primary" disabled={!sel.size} onClick={() => setBulk(true)}>Bulk edit ({sel.size})</button>
       </div>
       <div className="toolbar">
@@ -220,6 +226,7 @@ export function ItemsGrid({ source }: { source: DataSource }) {
         The lead time column shows the effective lead time under the default priority and mode in Settings; click it to edit the item&apos;s own lead time or its supplier&apos;s (a supplier lead time applies to every item from that supplier).
       </p>
       {panelRow && <ItemEditPanel row={panelRow} source={source} onClose={() => setPanel(null)} onMessage={flash} />}
+      {pushing && <PushToSapDialog codes={[...sel]} onClose={() => setPushing(false)} onDone={(text) => { setPushing(false); flash(true, text); }} />}
       {bulk && <BulkEditDialog codes={[...sel]} rows={[...sel].map((c) => seen.current.get(c)).filter((r): r is MasterItemRow => !!r)} source={source} onClose={() => setBulk(false)}
         onDone={(n, note) => { setBulk(false); setSel(new Set()); flash(true, `${n ? `Updated ${n} item${n === 1 ? '' : 's'}.` : ''}${note ?? ''}`.trim()); }} />}
     </>

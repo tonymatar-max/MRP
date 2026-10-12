@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
 import type {
   AppSettings, BulkItemRequest, CalendarQuery, DataSource, Forecast, MasterItemQuery, MasterOverride, MasterSupplierQuery, NewUser,
-  ExceptionMessage, RunCriteria, SapLogQuery, SupplierImportRow, PreviewDetailsRequest, TriggerRunRequest, ExecuteRequest, ExecutePayload,
+  ExceptionMessage, RunCriteria, SapLogQuery, SupplierImportRow, PushRequestItem, PreviewDetailsRequest, TriggerRunRequest, ExecuteRequest, ExecutePayload,
 } from './types';
 
 export function useRuns() {
@@ -250,5 +250,17 @@ export function useImportSuppliers() {
   return useMutation({
     mutationFn: (v: { source: DataSource; rows: SupplierImportRow[]; dryRun: boolean }) => api.importMasterSuppliers(v.source, v.rows, v.dryRun),
     onSuccess: (r) => { if (!r.dryRun) { qc.invalidateQueries({ queryKey: ['md-suppliers'] }); qc.invalidateQueries({ queryKey: ['md-items'] }); } },
+  });
+}
+
+export function usePushPreview() {
+  return useMutation({ mutationFn: (codes: string[]) => api.previewPushToSap(codes) });
+}
+
+export function usePushToSap() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { items: PushRequestItem[]; clearOverrides: boolean }) => api.pushToSap(v.items, v.clearOverrides),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['md-items'] }); qc.invalidateQueries({ queryKey: ['md-suppliers'] }); qc.invalidateQueries({ queryKey: ['sap-log'] }); },
   });
 }

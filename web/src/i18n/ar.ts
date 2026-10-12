@@ -166,6 +166,7 @@ export const AR: Record<string, string> = {
   'Create production order': 'إنشاء أمر إنتاج',
   'Move due date': 'نقل تاريخ الاستحقاق',
   'Close / cancel document': 'إغلاق / إلغاء مستند',
+  'Update item master': 'تحديث بيانات الصنف الرئيسية',
   'Service Layer session': 'جلسة Service Layer',
   'Nothing has been pushed to SAP B1 yet': 'لم يتم إرسال أي شيء إلى SAP B1 بعد',
   // planned orders: selection, groups, badges, toasts

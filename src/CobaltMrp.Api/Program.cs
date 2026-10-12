@@ -67,6 +67,7 @@ builder.Services.AddScoped<ISapPushLog>(sp =>
 builder.Services.AddScoped<RunPlanner>();
 builder.Services.AddSingleton<ReleaseService>();
 builder.Services.AddSingleton<ExceptionExecutor>();
+builder.Services.AddSingleton<ItemPushService>();
 builder.Services.AddSingleton<MrpEngine>();
 builder.Services.AddSingleton<ProviderFactory>();
 

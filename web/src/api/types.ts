@@ -434,7 +434,7 @@ export interface MasterSupplierPage { total: number; page: number; pageSize: num
 // ----- log of writes to SAP B1 -----
 export type SapPushAction =
   | 'CreatePurchaseOrder' | 'CreatePurchaseRequest' | 'CreateTransferRequest' | 'CreateProductionOrder'
-  | 'MoveDueDate' | 'CloseDocument' | 'Session';
+  | 'MoveDueDate' | 'CloseDocument' | 'UpdateItem' | 'Session';
 export interface SapLogEntry {
   id: string; at: string; userName: string; action: SapPushAction; success: boolean;
   runId?: string | null; plannedOrderId?: string | null; exceptionId?: string | null;
@@ -449,3 +449,11 @@ export interface SapLogQuery {
 export interface SupplierImportRow { line: number; cardCode: string; leadTimeDays: string; notes: string }
 export interface SupplierImportResultRow { line: number; cardCode: string; status: 'change' | 'same' | 'error'; message: string; before: number | null; after: number | null }
 export interface SupplierImportResponse { dryRun: boolean; applied: number; willChange: number; same: number; errors: number; results: SupplierImportResultRow[] }
+
+// ----- push Cobalt master-data overrides to the SAP B1 item master -----
+export interface PushPreviewField { field: string; label: string; cobalt: string; sap: string | null; status: 'change' | 'same' | 'blocked'; message: string | null }
+export interface PushPreviewItem { itemCode: string; itemName: string | null; found: boolean; fields: PushPreviewField[]; cobaltOnly: string[]; error: string | null }
+export interface PushPreview { ready: boolean; notReadyReason: string | null; items: PushPreviewItem[] }
+export interface PushRequestItem { itemCode: string; fields: { field: string; expectedSap: string | null; value: string }[] }
+export interface PushItemResult { itemCode: string; success: boolean; message: string; pushed: string[] }
+export interface PushExecuteResult { pushed: number; failed: number; items: PushItemResult[] }

@@ -16,6 +16,7 @@ const ACTIONS: { id: SapPushAction; label: string }[] = [
   { id: 'CreateProductionOrder', label: 'Create production order' },
   { id: 'MoveDueDate', label: 'Move due date' },
   { id: 'CloseDocument', label: 'Close / cancel document' },
+  { id: 'UpdateItem', label: 'Update item master' },
   { id: 'Session', label: 'Service Layer session' },
 ];
 const actionLabel = (a: SapPushAction) => ACTIONS.find((x) => x.id === a)?.label ?? a;   // English: also used for the CSV

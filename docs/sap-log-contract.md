@@ -9,6 +9,7 @@ Code: `Domain/SapPushLog.cs` (entity, actions), `Api/Services/SapPushLogStore.cs
 |---|---|
 | `CreatePurchaseOrder`, `CreatePurchaseRequest`, `CreateTransferRequest`, `CreateProductionOrder` | Release on Planned Orders, or Execute > Release on a release-in-past exception. One entry per order, success or failure. |
 | `MoveDueDate` | Execute > move on an Expedite/Defer exception (purchase order line or production order). |
+| `UpdateItem` | Master data > Items > **Push to SAP B1**: one entry per item whose item-master fields were written (summary lists each field, old -> new; target `OITM:<item code>`). |
 | `CloseDocument` | Execute > close a purchase order / cancel a production order. |
 | `Session` | The Service Layer session itself failed (login, network, expired session) so no document could be attempted, or the write-back stopped part-way. |
 
