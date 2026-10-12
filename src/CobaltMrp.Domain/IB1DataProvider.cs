@@ -15,6 +15,8 @@ public sealed class PlanningDataSet
     public IReadOnlyList<Forecast> Forecasts { get; init; } = Array.Empty<Forecast>();
     /// <summary>The source system's working calendar, or null when it has none (every day is then a working day).</summary>
     public WorkCalendar? Calendar { get; init; }
+    /// <summary>Warehouses SAP B1 marks as Drop Ship (OWHS.DropShip = 'Y'): only usable on sales orders, never as the source or target of a transfer.</summary>
+    public IReadOnlyCollection<string> DropShipWarehouses { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>

@@ -14,7 +14,7 @@ public class ServiceLayerClientTests
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct)
         {
             Calls.Add((req.RequestUri!.AbsolutePath, req.Content is null ? "" : await req.Content.ReadAsStringAsync(ct)));
-            var json = req.RequestUri!.AbsolutePath.EndsWith("Login") ? "{}" : "{\"DocEntry\":42}";
+            var json = req.RequestUri!.AbsolutePath.EndsWith("Login") ? "{}" : "{\"DocEntry\":42,\"AbsoluteEntry\":43}";
             return new HttpResponseMessage(HttpStatusCode.Created)
                 { Content = new StringContent(json, Encoding.UTF8, "application/json") };
         }

@@ -1,15 +1,18 @@
 import type { ExceptionType, PlannedOrderType } from '../api/types';
 
+/** Months and digits follow the app language (Arabic month names, Latin digits like the rest of the UI). */
+const loc = () => (typeof document !== 'undefined' && document.documentElement.lang === 'ar' ? 'ar-u-nu-latn' : undefined);
+
 export function fmtDate(iso: string | undefined | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+  return d.toLocaleDateString(loc(), { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 export function fmtDateTime(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleString(undefined, {
+  return d.toLocaleString(loc(), {
     day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
 }

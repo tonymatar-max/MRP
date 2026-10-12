@@ -31,6 +31,7 @@ function readLang(): Lang {
 export function LangProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>(readLang);
   const dir = lang === 'ar' ? 'rtl' : 'ltr';
+  if (typeof document !== 'undefined') document.documentElement.lang = lang; // idempotent; lets date formatting see it on the very first render
 
   // The document carries lang and dir, so the [dir="rtl"] stylesheet and the browser's own text handling follow.
   useEffect(() => {
@@ -39,6 +40,7 @@ export function LangProvider({ children }: { children: ReactNode }) {
   }, [lang, dir]);
 
   const setLang = useCallback((l: Lang) => {
+    document.documentElement.lang = l; // before the re-render, so date formatting already sees the new language
     setLangState(l);
     try { if (l === 'ar') localStorage.setItem(KEY, 'ar'); else localStorage.removeItem(KEY); } catch { /* the choice just lasts this visit */ }
   }, []);
@@ -52,9 +54,9 @@ export const useT = () => useContext(Context).t;
 
 /** Compact EN / عربي switch (the Cobalt design-system `.lang-switch`). */
 export function LangSwitch() {
-  const { lang, setLang } = useLang();
+  const { lang, setLang, t } = useLang();
   return (
-    <div className="lang-switch" role="group" aria-label="Language">
+    <div className="lang-switch" role="group" aria-label={t('Language')}>
       <button type="button" lang="en" className={lang === 'en' ? 'on' : ''} aria-pressed={lang === 'en'} onClick={() => setLang('en')}>EN</button>
       <button type="button" lang="ar" className={lang === 'ar' ? 'on' : ''} aria-pressed={lang === 'ar'} onClick={() => setLang('ar')}>عربي</button>
     </div>

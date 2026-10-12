@@ -424,3 +424,14 @@ tr.expand-row td { background: var(--page); white-space: normal; }
 tr.in-group td:first-child { box-shadow: inset 3px 0 0 var(--accent-line); }
 [dir="rtl"] tr.in-group td:first-child { box-shadow: inset -3px 0 0 var(--accent-line); }
 .check-inline { display: inline-flex; align-items: center; gap: 6px; align-self: flex-end; padding-bottom: 6px; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+
+/* Planned orders: sortable headers as real buttons, keyboard focus, group framing */
+th .th-btn { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; font: inherit; text-transform: inherit; letter-spacing: inherit; color: inherit; }
+th .th-btn:focus-visible, table.data tr[tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.group-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; white-space: normal; position: sticky; inset-inline-start: 8px; width: max-content; max-width: min(100%, calc(100vw - 96px)); }
+.group-head strong bdi, .group-head bdi { unicode-bidi: isolate; }
+/* the group hint sits on the tinted group row: --faint is under 4.5:1 there, so use the muted ink */
+.group-row .hint { color: var(--muted); }
+tr.group-end td { border-bottom: 2px solid var(--line-strong); }
+tr.group-end td:first-child { box-shadow: inset 3px 0 0 var(--accent-line); }
+[dir="rtl"] tr.group-end td:first-child { box-shadow: inset -3px 0 0 var(--accent-line); }

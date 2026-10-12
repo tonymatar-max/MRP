@@ -78,8 +78,11 @@ public static class SettingsEndpoints
             var stored = settings.Get().ServiceLayer;
             var sl = body is { IsConfigured: true } ? body : stored;
             if (string.IsNullOrEmpty(sl.Password)) sl.Password = stored.Password;
+            sl.BaseUrl = (sl.BaseUrl ?? "").Trim(); sl.CompanyDb = (sl.CompanyDb ?? "").Trim(); sl.UserName = (sl.UserName ?? "").Trim();
             if (!sl.IsConfigured)
                 return Results.Ok(new TestResult(false, "Enter the base URL, company database and user name first."));
+            var bad = ServiceLayerDiagnostics.ValidateBaseUrl(sl.BaseUrl);
+            if (bad is not null) return Results.Ok(new TestResult(false, bad));
             return Results.Ok(await Safe(async () =>
             {
                 using var client = new ServiceLayerClient(new ServiceLayerOptions
@@ -90,8 +93,7 @@ public static class SettingsEndpoints
                 await client.LoginAsync(ct);
                 await client.LogoutAsync(ct);
                 return new TestResult(true, $"Signed in to {sl.CompanyDb} as {sl.UserName} and signed out again.");
-            }, hint: "Check the base URL (usually https://server:50000/b1s/v1), the company database name, and the " +
-                     "certificate setting if the server uses a self-signed certificate."));
+            }, explain: ex => ServiceLayerDiagnostics.Explain(ex, sl.BaseUrl, sl.AllowInvalidCertificates)));
         });
 
         g.MapPost("/init-schema", async (SettingsService settings, CancellationToken ct) =>
@@ -118,12 +120,13 @@ public static class SettingsEndpoints
         return $"SQL Server {conn.ServerVersion}";
     }
 
-    private static async Task<TestResult> Safe(Func<Task<TestResult>> action, string? hint = null)
+    private static async Task<TestResult> Safe(Func<Task<TestResult>> action, string? hint = null, Func<Exception, string>? explain = null)
     {
         try { return await action(); }
         catch (Exception ex)
         {
-            var msg = ex is SqlException { Number: 4060 } ? "The database does not exist or the login cannot open it." : ex.Message;
+            var msg = explain is not null ? explain(ex)
+                : ex is SqlException { Number: 4060 } ? "The database does not exist or the login cannot open it." : ex.Message;
             return new TestResult(false, hint is null ? msg : $"{msg} {hint}");
         }
     }

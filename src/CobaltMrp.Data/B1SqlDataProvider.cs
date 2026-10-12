@@ -63,10 +63,11 @@ public sealed class B1SqlDataProvider : IB1DataProvider, IMasterDataProvider
 
         bool WhOk(string? wh) => whSet is null || (wh is not null && whSet.Contains(wh));
 
-        _ = warehouseR; // OWHS is read for validation/future warehouse metadata; not projected today.
+        var dropShip = warehouseR.Where(w => string.Equals(w.DropShip, "Y", StringComparison.OrdinalIgnoreCase)).Select(w => w.Code).ToList();
 
         return new PlanningDataSet
         {
+            DropShipWarehouses = dropShip,
             Items = items.Select(MapItem).ToList(),
             Stock = stock.Where(s => WhOk(s.WarehouseCode)).Select(MapStock).ToList(),
             Bom = bom.Select(MapBom).ToList(),
@@ -278,7 +279,8 @@ FROM OITW T0;";
     private const string SqlWarehouses = @"
 SELECT
     T0.WhsCode AS Code,
-    T0.WhsName AS Name
+    T0.WhsName AS Name,
+    T0.DropShip AS DropShip
 FROM OWHS T0;";
 
     /// <summary>
@@ -492,6 +494,7 @@ INNER JOIN OADM A ON A.HldCode = D.HldCode;";
     {
         public string Code { get; init; } = "";
         public string? Name { get; init; }
+        public string? DropShip { get; init; }
     }
 
     private sealed record BomRow

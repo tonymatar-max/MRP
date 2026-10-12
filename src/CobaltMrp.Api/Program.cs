@@ -126,7 +126,16 @@ app.Use(async (ctx, next) =>
     ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
     ctx.Response.Headers["X-Frame-Options"] = "DENY";
     ctx.Response.Headers["Referrer-Policy"] = "no-referrer";
-    await next();
+    try { await next(); }
+    catch (Exception ex) when (ex is not OperationCanceledException && !ctx.Response.HasStarted && ctx.Request.Path.StartsWithSegments("/api"))
+    {
+        // Safety net: an API call never ends as an empty HTTP 500; the UI always gets {message}.
+        app.Logger.LogError(ex, "Unhandled error in {Path}", ctx.Request.Path);
+        ctx.Response.Clear();
+        ctx.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        ctx.Response.ContentType = "application/json";
+        await ctx.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(new { message = "The server hit an unexpected error: " + ex.Message }));
+    }
 });
 
 if (app.Environment.IsDevelopment())

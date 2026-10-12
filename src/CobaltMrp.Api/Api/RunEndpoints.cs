@@ -202,11 +202,19 @@ public static class RunEndpoints
             var ids = req.PlannedOrderIds.ToHashSet();
             var selected = run.PlannedOrders.Where(o => ids.Contains(o.Id)).ToList();
             var grouping = RunCriteria.FromJson(run.CriteriaJson)?.Purchasing.Grouping ?? DocumentGrouping.Supplier;
-            var outcome = await release.ReleaseAsync(store, selected, ct, new PushContext(pushLog, ctx.User.Identity?.Name ?? "", id), grouping);
+            ReleaseOutcome outcome;
+            try { outcome = await release.ReleaseAsync(store, selected, ct, new PushContext(pushLog, ctx.User.Identity?.Name ?? "", id), grouping); }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex)
+            {
+                // Never an empty HTTP 500: the UI always gets a message it can show.
+                return Results.Json(new { message = $"Release failed: {ex.Message}" }, statusCode: 502);
+            }
             var sl = settings.Get().ServiceLayer;
             return Results.Ok(new
             {
                 released = selected.Count, writebackEnabled = outcome.WritebackEnabled, pushedToB1 = outcome.Pushed, documentsCreated = outcome.Documents,
+                alreadyInSap = outcome.AlreadyInSap, adoptedExisting = outcome.Adopted,
                 failures = outcome.Failures.Select(f => new { plannedOrderId = f.PlannedOrderId, error = f.Error }),
                 plannedOrders = selected.Select(o => PlannedOrderDto.From(o, sl)).ToList(),
             });

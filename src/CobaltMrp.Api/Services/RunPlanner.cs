@@ -88,6 +88,7 @@ public sealed class RunPlanner
             WorkCenters = centers, Supply = loaded.Supply, Demand = loaded.Demand,
             Forecasts = cobaltForecasts.Count > 0 ? cobaltForecasts : loaded.Forecasts,
             Calendar = PlanningSetup.BuildCalendar(loaded.Calendar, s.Planning),
+            DropShipWarehouses = loaded.DropShipWarehouses,
         };
 
         // Layer the planner's overrides, pick each item's supplier and apply the lead-time rule.
@@ -100,7 +101,7 @@ public sealed class RunPlanner
         var horizonStart = c.Horizon.StartDate ?? today;
         data = CriteriaApplier.PrepareData(data, c, horizonStart);
         var scope = CriteriaApplier.Scope(data, c);
-        return (new PreparedRun(data, CriteriaApplier.ToOptions(c, today, runBy, scope), scope, c), null);
+        return (new PreparedRun(data, CriteriaApplier.ToOptions(c, today, runBy, scope, loaded.DropShipWarehouses), scope, c), null);
     }
 
     private static List<string> EffectiveWarehouses(PlanningDataSet data, RunCriteria c) =>

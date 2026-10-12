@@ -85,6 +85,9 @@ public sealed class SettingsService
         m.Ai.Model = modelIds.Count == 0 ? AiSettings.DefaultModel : string.Join(", ", modelIds);
         if (m.Ai.Model.Length > 500) m.Ai.Model = m.Ai.Model[..500];
         m.Ai.MaxTokens = m.Ai.MaxTokens <= 0 ? AiSettings.DefaultMaxTokens : Math.Clamp(m.Ai.MaxTokens, 64, 8192);
+        m.ServiceLayer.BaseUrl = (m.ServiceLayer.BaseUrl ?? "").Trim();
+        m.ServiceLayer.CompanyDb = (m.ServiceLayer.CompanyDb ?? "").Trim();
+        m.ServiceLayer.UserName = (m.ServiceLayer.UserName ?? "").Trim();
         m.ServiceLayer.ItemVendors = m.ServiceLayer.ItemVendors
             .Where(v => !string.IsNullOrWhiteSpace(v.ItemCode) && !string.IsNullOrWhiteSpace(v.CardCode)).ToList();
         m.Planning.HorizonDays = Math.Clamp(m.Planning.HorizonDays, 1, 1095);

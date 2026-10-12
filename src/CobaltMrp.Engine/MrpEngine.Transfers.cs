@@ -54,7 +54,9 @@ public sealed partial class MrpEngine
         var allowedSources = opt.TransferSources.Count == 0
             ? new HashSet<string>(warehouses, StringComparer.OrdinalIgnoreCase)
             : new HashSet<string>(opt.TransferSources, StringComparer.OrdinalIgnoreCase);
-        var sources = warehouses.Where(allowedSources.Contains).ToList();
+        // Drop Ship warehouses (SAP B1: usable only on sales orders) neither send nor receive transfers.
+        var noTransfer = new HashSet<string>(opt.NoTransferWarehouses, StringComparer.OrdinalIgnoreCase);
+        var sources = warehouses.Where(w => allowedSources.Contains(w) && !noTransfer.Contains(w)).ToList();
         var used = sources.ToDictionary(s => s, _ => new decimal[cal.Count], StringComparer.OrdinalIgnoreCase);
 
         decimal Available(string source, int fromBucket)
@@ -73,6 +75,7 @@ public sealed partial class MrpEngine
 
         foreach (var (dest, order, net) in shortages)
         {
+            if (noTransfer.Contains(dest)) continue;       // its shortage is bought or made there, never transferred in
             var remaining = net;
             var release = workCalendar.OnOrBeforeWorkingDay(order.DueDate.AddDays(-opt.TransferLeadDays));
             var releaseBucket = Math.Max(0, cal.IndexOf(release));

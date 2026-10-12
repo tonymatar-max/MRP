@@ -39,6 +39,8 @@ public sealed class MrpOptions
     /// <summary>Warehouses that may supply a transfer. Empty = every planned warehouse.</summary>
     public IReadOnlyCollection<string> TransferSources { get; init; } = Array.Empty<string>();
     public int TransferLeadDays { get; init; } = 1;
+    /// <summary>Warehouses that can never send or receive a transfer (SAP B1 Drop Ship warehouses).</summary>
+    public IReadOnlyCollection<string> NoTransferWarehouses { get; init; } = Array.Empty<string>();
 
     public string RunBy { get; init; } = "system";
 }

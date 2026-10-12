@@ -83,8 +83,7 @@ function makePlannedOrders(runId: string): PlannedOrder[] {
       dueDate: isoDate(due),
       releaseDate: isoDate(release),
       lowLevelCode: item.level,
-      firmed: rand() > 0.82,
-      b1DocEntry: rand() > 0.85 ? 13000 + i : null,
+      ...(() => { const f = rand() > 0.82, d = rand() > 0.85; return { firmed: f || d, b1DocEntry: d ? 13000 + i : null }; })(),
       ...mockVendor(item.code, isProd),
     });
   }
@@ -365,12 +364,13 @@ export function releaseOrders(runId: string, ids: string[]) {
     if (ids.includes(po.id)) {
       po.firmed = true;
       if (!po.b1DocEntry) {
+        // Only orders that get a NEW document count (already-created ones are skipped, like on the server).
         // Same rule as the server: orders with the same key share one document.
         const key = documentKey(po, grouping);
         if (key && byKey.has(key)) po.b1DocEntry = byKey.get(key);
         else { po.b1DocEntry = docEntry++; if (key) byKey.set(key, po.b1DocEntry); }
+        docs.add(po.b1DocEntry as number);
       }
-      docs.add(po.b1DocEntry as number);
       released.push(po);
     }
   }

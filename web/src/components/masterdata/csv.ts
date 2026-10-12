@@ -1,8 +1,11 @@
 /** Small CSV reader for the import dialogs: quotes, doubled quotes, BOM, and a comma, semicolon or tab delimiter. */
+export function csvDelimiter(text: string): string {
+  const firstLine = text.replace(/^\uFEFF/, '').split(/\r?\n/, 1)[0] ?? '';
+  return [',', ';', '\t'].map((d) => ({ d, n: firstLine.split(d).length })).sort((a, b) => b.n - a.n)[0].d;
+}
 export function parseCsv(text: string): string[][] {
   const src = text.replace(/^\uFEFF/, '');
-  const firstLine = src.split(/\r?\n/, 1)[0] ?? '';
-  const delim = [',', ';', '\t'].map((d) => ({ d, n: firstLine.split(d).length })).sort((a, b) => b.n - a.n)[0].d;
+  const delim = csvDelimiter(text);
   const rows: string[][] = [];
   let row: string[] = [], cell = '', quoted = false;
   for (let i = 0; i < src.length; i++) {

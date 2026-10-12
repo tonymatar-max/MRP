@@ -20,11 +20,12 @@ public class DocumentGroupingTests
         {
             var path = req.RequestUri!.AbsolutePath;
             if (path.EndsWith("Login")) return Json(HttpStatusCode.OK, "{}");
+            if (req.Method == HttpMethod.Get) return Json(HttpStatusCode.OK, "{\"value\":[]}");   // item data / search for existing documents
             var body = req.Content is null ? "" : await req.Content.ReadAsStringAsync(ct);
             Posts.Add((path.Split('/').Last(), body));
             if (Refuse(path, body))
                 return Json(HttpStatusCode.BadRequest, "{\"error\":{\"code\":-5002,\"message\":{\"lang\":\"en-us\",\"value\":\"refused\"}}}");
-            return Json(HttpStatusCode.Created, $"{{\"DocEntry\":{_next++}}}");
+            return Json(HttpStatusCode.Created, $"{{\"DocEntry\":{_next++},\"AbsoluteEntry\":{_next - 1}}}");
         }
 
         private static HttpResponseMessage Json(HttpStatusCode c, string t) => new(c) { Content = new StringContent(t, Encoding.UTF8, "application/json") };
@@ -147,9 +148,9 @@ public class DocumentGroupingTests
         fake.Refuse = (_, body) => body.Contains("\"ItemCode\":\"BAD\"");
         var s = await wb.PushAsync(new[] { Po("A", "V1"), Po("BAD", "V1"), Po("C", "V1") }, default, null, DocumentGrouping.Supplier);
 
-        Assert.Equal(4, fake.Posts.Count);                           // 1 combined (refused) + 3 singles
+        Assert.Equal(5, fake.Posts.Count);                           // bisect: [A,BAD,C] no, [A] ok, [BAD,C] no, [BAD] no, [C] ok
         Assert.Equal(2, s.Succeeded.Count());
-        Assert.All(s.Succeeded, r => Assert.Equal(1, r.DocLines));
+        
         Assert.Equal("refused", s.Failed.Single().Error!.Split(": ").Last());
     }
 

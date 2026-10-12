@@ -48,6 +48,7 @@ export default function SapLog() {
     action, item: dItem.trim() || undefined, user: dUser.trim() || undefined, limit: 500,
   });
   const rows = log.data ?? [];
+  const filtered = result !== 'all' || action !== '' || dItem.trim() !== '' || dUser.trim() !== '';
   const failed = rows.filter((r) => !r.success).length;
 
   return (
@@ -86,7 +87,7 @@ export default function SapLog() {
 
         {log.isLoading && <Loading />}
         {log.isError && <ErrorState error={log.error} />}
-        {log.data && rows.length === 0 && <div className="card"><Empty title="Nothing has been pushed to SAP B1 yet" /></div>}
+        {log.data && rows.length === 0 && <div className="card"><Empty title={filtered ? 'No log entries match these filters' : 'Nothing has been pushed to SAP B1 yet'} /></div>}
         {rows.length > 0 && (
           <div className="card">
             <div className="table-wrap">

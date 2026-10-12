@@ -137,9 +137,14 @@ public sealed class ExceptionExecutor
                 message = await LoggedAsync(push, e, ev.Doc!, SapPushActions.MoveDueDate, $"Move due date to {req.NewDate:yyyy-MM-dd}", () => WithSessionAsync(async client =>
                 {
                     var doc = ev.Doc!; var date = req.NewDate!.Value;
+                    DateOnly? headerBefore = null, earliestBefore = null;
                     if (doc.Kind == Kind.PurchaseOrder)
+                    {
+                        var before = await Read(client, doc, e.SourceLine, ct);
+                        headerBefore = before.HeaderDate; earliestBefore = before.EarliestOpenLine;
                         await client.PatchEntityAsync($"PurchaseOrders({doc.DocEntry})",
                             new { DocumentLines = new[] { new { LineNum = e.SourceLine ?? 0, ShipDate = date.ToString("yyyy-MM-dd") } } }, ct);
+                    }
                     else
                         await client.PatchEntityAsync($"ProductionOrders({doc.DocEntry})", new { DueDate = date.ToString("yyyy-MM-dd") }, ct);
 
@@ -147,8 +152,16 @@ public sealed class ExceptionExecutor
                     var after = await Read(client, doc, e.SourceLine, ct);
                     if (after.Date != date)
                         throw new ExecuteException(502, $"SAP B1 accepted the change but the document now shows {after.Date:yyyy-MM-dd}, not {date:yyyy-MM-dd}.");
+                    var headerNote = "";
+                    if (doc.Kind == Kind.PurchaseOrder && headerBefore is not null && earliestBefore is not null && headerBefore == earliestBefore
+                        && after.EarliestOpenLine is { } newEarliest && newEarliest != headerBefore)
+                    {
+                        // The header due date followed the earliest line before the move: keep it that way.
+                        await client.PatchEntityAsync($"PurchaseOrders({doc.DocEntry})", new { DocDueDate = newEarliest.ToString("yyyy-MM-dd") }, ct);
+                        headerNote = $" Header due date is now {newEarliest:yyyy-MM-dd}.";
+                    }
                     return doc.Kind == Kind.PurchaseOrder
-                        ? $"Purchase order {doc.DocEntry} line {e.SourceLine ?? 0} moved to {date:yyyy-MM-dd}."
+                        ? $"Purchase order {doc.DocEntry} line {e.SourceLine ?? 0} moved to {date:yyyy-MM-dd}.{headerNote}"
                         : $"Production order {doc.DocEntry} moved to {date:yyyy-MM-dd}.";
                 }, ct));
                 break;
@@ -158,6 +171,18 @@ public sealed class ExceptionExecutor
                     var doc = ev.Doc!;
                     if (doc.Kind == Kind.PurchaseOrder)
                     {
+                        var snap = await Read(client, doc, e.SourceLine, ct);
+                        if (snap.OpenLines > 1)
+                        {
+                            // Several open lines (the norm with grouped purchase orders): close only the line this exception is about.
+                            var lineNo = e.SourceLine ?? 0;
+                            await client.PatchEntityAsync($"PurchaseOrders({doc.DocEntry})",
+                                new { DocumentLines = new[] { new { LineNum = lineNo, LineStatus = "bost_Close" } } }, ct);
+                            var check = await ReadLineStatus(client, doc.DocEntry, lineNo, ct);
+                            if (check != "bost_Close")
+                                throw new ExecuteException(502, $"SAP B1 accepted the change but line {lineNo} of purchase order {doc.DocEntry} is still {check ?? "unknown"}.");
+                            return $"Line {lineNo} of purchase order {doc.DocEntry} closed; the other {snap.OpenLines - 1} line(s) stay open.";
+                        }
                         await client.PostActionAsync($"PurchaseOrders({doc.DocEntry})/Close", ct);
                         return $"Purchase order {doc.DocEntry} closed.";
                     }
@@ -238,6 +263,7 @@ public sealed class ExceptionExecutor
         {
             ev.Title = $"Close {where}";
             ev.Summary = doc.Kind == Kind.PurchaseOrder ? $"Close {docName} {doc.DocEntry} in SAP B1." : $"Cancel {docName} {doc.DocEntry} in SAP B1.";
+            if (doc.Kind == Kind.PurchaseOrder) ev.Target = new PreviewTarget(doc.Kind.ToString(), doc.DocEntry, e.SourceLine ?? 0);
             ev.Proposed = new PreviewState(null, doc.Kind == Kind.PurchaseOrder ? "Closed" : "Cancelled");
         }
 
@@ -273,7 +299,11 @@ public sealed class ExceptionExecutor
         else if (action == ExecuteActions.Close)
         {
             if (doc.Kind == Kind.PurchaseOrder && openLines > 1)
-                ev.Blockers.Add($"This purchase order has {openLines} open lines; closing it would close all of them. Close the line in SAP B1 instead.");
+            {
+                // Only this line is closed; the preview says so in plain words.
+                ev.Summary = $"Close line {e.SourceLine ?? 0} of {docName} {doc.DocEntry} in SAP B1. The other {openLines - 1} open line(s) stay open.";
+                ev.Proposed = new PreviewState(null, "Line closed");
+            }
             if (doc.Kind == Kind.ProductionOrder && string.Equals(status, "boposReleased", StringComparison.OrdinalIgnoreCase))
                 ev.Blockers.Add("A released production order may have issues and receipts pending: close it in SAP B1.");
             ev.Warnings.Add("This cannot be undone from Cobalt MRP.");
@@ -293,7 +323,17 @@ public sealed class ExceptionExecutor
         _ => status,
     };
 
-    private sealed record Snapshot(bool Found, bool IsOpen, string? Status, DateOnly? Date, int OpenLines, bool PartiallyReceived);
+    private sealed record Snapshot(bool Found, bool IsOpen, string? Status, DateOnly? Date, int OpenLines, bool PartiallyReceived,
+        DateOnly? HeaderDate = null, DateOnly? EarliestOpenLine = null);
+
+    private static async Task<string?> ReadLineStatus(ServiceLayerClient client, int docEntry, int line, CancellationToken ct)
+    {
+        var j = await client.GetEntityAsync($"PurchaseOrders({docEntry})", ct);
+        if (!j.TryGetProperty("DocumentLines", out var dl) || dl.ValueKind != JsonValueKind.Array) return null;
+        foreach (var l in dl.EnumerateArray())
+            if (l.TryGetProperty("LineNum", out var n) && n.GetInt32() == line) return Str(l, "LineStatus");
+        return null;
+    }
 
     private static async Task<Snapshot> Read(ServiceLayerClient client, DocRef doc, int? line, CancellationToken ct)
     {
@@ -317,7 +357,9 @@ public sealed class ExceptionExecutor
         var openLines = lines.Count(l => Str(l, "LineStatus") is "bost_Open");
         var partial = found && target.TryGetProperty("Quantity", out var q) && target.TryGetProperty("RemainingOpenQuantity", out var r)
                       && q.ValueKind == JsonValueKind.Number && r.ValueKind == JsonValueKind.Number && r.GetDecimal() < q.GetDecimal();
-        return new Snapshot(found, docStatus is "bost_Open" && lineOpen, docStatus, found ? Date(target, "ShipDate") : null, openLines, partial);
+        var openDates = lines.Where(l => Str(l, "LineStatus") is "bost_Open").Select(l => Date(l, "ShipDate")).Where(d => d is not null).Select(d => d!.Value).ToList();
+        return new Snapshot(found, docStatus is "bost_Open" && lineOpen, docStatus, found ? Date(target, "ShipDate") : null, openLines, partial,
+            Date(j, "DocDueDate"), openDates.Count > 0 ? openDates.Min() : null);
     }
 
     /// <summary>Runs one change in SAP B1 and logs it either way (a failure is logged, then rethrown unchanged).</summary>

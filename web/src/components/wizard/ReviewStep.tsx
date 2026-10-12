@@ -65,6 +65,7 @@ export function ReviewStep({ c, notes, onNotes }: { c: RunCriteria; notes: strin
             <dl className="criteria-list card-b" aria-label="Planning criteria">
               <div><dt>Level</dt><dd>{(p.planning?.level ?? c.level) === 'Company' ? 'Company (stock pooled)' : 'Warehouse (each planned separately)'}</dd></div>
               <div><dt>Purchasing document</dt><dd>{(p.planning?.purchaseDocument ?? c.purchasing.document) === 'Request' ? 'Purchase request' : 'Purchase order'}</dd></div>
+              <div><dt>Documents on release</dt><dd>{({ None: 'No grouping (one per planned order)', SupplierAndDate: 'Per supplier and due date', Supplier: 'One per supplier' } as Record<string, string>)[c.purchasing.grouping ?? 'Supplier']}</dd></div>
               <div><dt>Warehouses</dt><dd>{(p.planning?.warehouses ?? c.scope.warehouses).join(', ') || 'All'}</dd></div>
               {(p.planning?.level ?? c.level) === 'Warehouse' && (
                 <div><dt>Transfers</dt><dd>{(p.planning?.transfersEnabled ?? c.transfers.enabled)

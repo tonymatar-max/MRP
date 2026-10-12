@@ -52,7 +52,7 @@ public static class CriteriaApplier
         };
     }
 
-    public static MrpOptions ToOptions(RunCriteria c, DateOnly today, string runBy, IReadOnlyCollection<string>? scope) => new()
+    public static MrpOptions ToOptions(RunCriteria c, DateOnly today, string runBy, IReadOnlyCollection<string>? scope, IReadOnlyCollection<string>? noTransferWarehouses = null) => new()
     {
         HorizonStart = c.Horizon.StartDate ?? today,
         HorizonDays = c.Horizon.Days,
@@ -68,6 +68,7 @@ public static class CriteriaApplier
         TransferEnabled = c.Level == PlanningLevel.Warehouse && c.Transfers.Enabled,
         TransferSources = c.Transfers.SourceWarehouses,
         TransferLeadDays = c.Transfers.LeadTimeDays,
+        NoTransferWarehouses = noTransferWarehouses ?? Array.Empty<string>(),
         RunBy = runBy,
     };
 

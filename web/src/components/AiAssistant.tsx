@@ -1,3 +1,4 @@
+import { useT } from '../i18n';
 import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
@@ -86,13 +87,14 @@ export function AiPanelProvider({ children }: { children: ReactNode }) {
 
 /** The "Ask AI" button for page headers. Hidden when AI is off, except a gentle hint for administrators. */
 export function AskAiButton() {
+  const tr = useT();
   const { isAdmin } = useAuth();
   const status = useAiStatus().data;
   const panel = useAiPanel();
   if (!status) return null;
   if (!status.enabled || !status.configured) {
     return isAdmin
-      ? <Link className="btn ghost sm ai-hint" to="/settings?tab=ai">{status.enabled ? 'Add an AI key in Settings' : 'Enable AI in Settings'}</Link>
+      ? <Link className="btn ghost sm ai-hint" to="/settings?tab=ai">{tr(status.enabled ? 'Add an AI key in Settings' : 'Enable AI in Settings')}</Link>
       : null;
   }
   return (
