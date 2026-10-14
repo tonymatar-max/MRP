@@ -18,3 +18,9 @@ appsettings.*.local.json
 .idea/
 *.user
 Thumbs.db
+
+# internal notes and research: kept locally, not published
+PROJECT-STATE.md
+docs/market-research.md
+# build cache
+*.tsbuildinfo

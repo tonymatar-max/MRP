@@ -3,7 +3,6 @@
 **Status:** Draft v1 · **Owner:** Product (Cobalt) · **Date:** 2026-10-09
 **Stack:** .NET 8 Web API + EF Core + SQL Server · React + Vite (Cobalt-branded) · Windows service `CobaltMRP` · SAP Business One (SQL read + Service Layer/OData write-back)
 
-> A parallel market-research deliverable (`docs/market-research.md`) is expected. Where it exists, its differentiators feed positioning and prioritisation; this PRD is written to stand alone until it lands.
 
 ---
 
