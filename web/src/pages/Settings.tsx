@@ -2,21 +2,22 @@ import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'reac
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { API_BASE, USE_MOCK, api } from '../api/client';
 import {
-  useCreateUser, useDeleteUser, useSaveSettings, useSetUserPassword, useSettings, useUsers,
+  useAutomationStatus, useCreateUser, useDeleteUser, useRunTemplates, useSaveSettings, useSetUserPassword, useSettings, useUsers,
 } from '../api/hooks';
 import type {
-  AiSettings, AppSettings, DataSource, NonWorkingDate, ResourceInfo, Weekday, DbSettings, ItemVendor, OkResult, PlanningSettings, Role, ServiceLayerSettings,
+  AiSettings, AppSettings, NotificationSettings, ScheduleSettings, DataSource, NonWorkingDate, ResourceInfo, Weekday, DbSettings, ItemVendor, OkResult, PlanningSettings, Role, ServiceLayerSettings,
 } from '../api/types';
 import { useAuth } from '../components/Auth';
 import { PriorityControl } from '../components/PriorityControl';
 import { Dialog, ErrorState, Loading, PageHeader, Pill } from '../components/ui';
 
-type TabId = 'cobalt' | 'b1' | 'sl' | 'planning' | 'ai' | 'users';
+type TabId = 'cobalt' | 'b1' | 'sl' | 'planning' | 'automation' | 'ai' | 'users';
 const TABS: { id: TabId; label: string }[] = [
   { id: 'cobalt', label: 'Cobalt database' },
   { id: 'b1', label: 'SAP B1 database' },
   { id: 'sl', label: 'Service Layer' },
   { id: 'planning', label: 'Planning defaults' },
+  { id: 'automation', label: 'Automation' },
   { id: 'ai', label: 'AI' },
   { id: 'users', label: 'Users' },
 ];
@@ -251,6 +252,108 @@ function ModelPicker({ value, models, onChange }: { value: string; models: strin
       )}
       <span className="hint">Any OpenRouter model that supports tool calling. The primary is used first; if it is down, rate-limited or refuses, OpenRouter tries the fallbacks in order. Up to {MAX_MODELS}.</span>
     </div>
+  );
+}
+
+// ---------- Automation: scheduled runs and new-exception emails ----------
+const fmtWhen = (iso?: string | null) => (iso ? new Date(iso).toLocaleString() : '—');
+
+function AutomationSection({ schedule, notifications, onSchedule, onNotifications }: {
+  schedule: ScheduleSettings; notifications: NotificationSettings;
+  onSchedule: (v: ScheduleSettings) => void; onNotifications: (v: NotificationSettings) => void;
+}) {
+  const setS = <K extends keyof ScheduleSettings>(k: K, v: ScheduleSettings[K]) => onSchedule({ ...schedule, [k]: v });
+  const setN = <K extends keyof NotificationSettings>(k: K, v: NotificationSettings[K]) => onNotifications({ ...notifications, [k]: v });
+  const templates = useRunTemplates().data ?? [];
+  const status = useAutomationStatus();
+  const probe = useProbe(() => api.testEmail(notifications));
+  const now = useProbe(async () => { const r = await api.runScheduledNow(); void status.refetch(); return { ok: r.ok, message: r.message }; });
+  const toggleDay = (d: Weekday) => setS('days', schedule.days.includes(d) ? schedule.days.filter((x) => x !== d) : [...schedule.days, d]);
+  const st = status.data;
+  return (
+    <>
+      <SectionCard
+        title="Scheduled run"
+        badge={<Pill tone={schedule.enabled ? 'info' : undefined}>{schedule.enabled ? 'On' : 'Off'}</Pill>}
+        actions={
+          <>
+            <button type="button" className="btn" disabled={now.busy} onClick={now.go}
+              title="Runs MRP exactly as the saved schedule would, right now (save the settings first)">{now.busy ? 'Running…' : 'Run now'}</button>
+            <span className="hint grow">Uses the saved settings. The run appears under Recent runs, started by "scheduler".</span>
+          </>
+        }
+      >
+        <Check id="sch-on" label="Run MRP automatically" checked={schedule.enabled} onChange={(v) => setS('enabled', v)}
+          hint="Off by default. The server's local time is used. A run missed because the service was stopped for more than 6 hours is skipped, never started at a surprising hour." />
+        <div className="form-row">
+          <div className="field"><label htmlFor="sch-time">Time of day</label>
+            <input id="sch-time" type="time" value={schedule.time} onChange={(e) => setS('time', e.target.value)} /></div>
+          <div className="field"><label htmlFor="sch-tpl">Options</label>
+            <select id="sch-tpl" value={schedule.templateId} onChange={(e) => setS('templateId', e.target.value)}>
+              <option value="">Settings defaults (Planning defaults tab)</option>
+              {templates.map((t) => <option key={t.id} value={t.id}>Template: {t.name}</option>)}
+            </select>
+            <span className="hint">Save a template in the Run MRP wizard to choose it here.</span></div>
+        </div>
+        <div role="group" aria-label="Days">
+          <div className="chips">
+            {DAYS.map((d) => <button key={d} type="button" className={`chip ${schedule.days.includes(d) ? 'on' : ''}`} aria-pressed={schedule.days.includes(d)} onClick={() => toggleDay(d)}>{d}</button>)}
+          </div>
+        </div>
+        <ResultBox r={now.result} />
+        {st && (
+          <dl className="auto-status">
+            <div><dt>Next run</dt><dd>{schedule.enabled && st.schedule.nextRunAt ? fmtWhen(st.schedule.nextRunAt) : 'Not scheduled'}</dd></div>
+            <div><dt>Last run</dt><dd>{st.lastRun.at ? <>{fmtWhen(st.lastRun.at)} · {st.lastRun.ok ? 'OK' : 'Problem'}<div className="muted">{st.lastRun.message}</div></> : 'Never'}</dd></div>
+          </dl>
+        )}
+      </SectionCard>
+
+      <SectionCard
+        title="New-exception emails"
+        badge={<Pill tone={notifications.enabled ? 'info' : undefined}>{notifications.enabled ? 'On' : 'Off'}</Pill>}
+        actions={
+          <>
+            <button type="button" className="btn" disabled={probe.busy} onClick={probe.go}>{probe.busy ? 'Sending…' : 'Send test email'}</button>
+            <span className="hint grow">The test uses the values below, saved or not.</span>
+          </>
+        }
+      >
+        <Check id="ntf-on" label="Email me when a run has new exceptions" checked={notifications.enabled} onChange={(v) => setN('enabled', v)}
+          hint="Off by default. 'New' means the run before it did not have that exception. Nothing is sent when there is nothing new." />
+        <div className="form-row">
+          <div className="field"><label htmlFor="ntf-host">SMTP server</label>
+            <input id="ntf-host" value={notifications.smtpHost} placeholder="smtp.example.com" onChange={(e) => setN('smtpHost', e.target.value)} /></div>
+          <Num id="ntf-port" label="Port" min={1} max={65535} value={notifications.smtpPort} onChange={(n) => setN('smtpPort', n)} hint="587 (STARTTLS) is typical." />
+        </div>
+        <Check id="ntf-ssl" label="Secure the connection (TLS)" checked={notifications.useSsl} onChange={(v) => setN('useSsl', v)}
+          hint="Uses STARTTLS. Implicit TLS on port 465 is not supported." />
+        <div className="form-row">
+          <div className="field"><label htmlFor="ntf-user">User name</label>
+            <input id="ntf-user" autoComplete="off" value={notifications.userName} onChange={(e) => setN('userName', e.target.value)} /></div>
+          <PasswordField id="ntf-pass" label="Password" value={notifications.password} isSet={notifications.passwordSet} onChange={(v) => setN('password', v)} />
+        </div>
+        <div className="form-row">
+          <div className="field"><label htmlFor="ntf-from">From address</label>
+            <input id="ntf-from" type="email" value={notifications.from} placeholder="mrp@yourcompany.com" onChange={(e) => setN('from', e.target.value)} /></div>
+          <div className="field"><label htmlFor="ntf-url">Link in the email (optional)</label>
+            <input id="ntf-url" value={notifications.publicUrl} placeholder="https://mrp.yourcompany.com" onChange={(e) => setN('publicUrl', e.target.value)} />
+            <span className="hint">The email links to this address followed by /exceptions.</span></div>
+        </div>
+        <div className="field"><label htmlFor="ntf-to">Recipients</label>
+          <textarea id="ntf-to" rows={2} value={notifications.recipients} placeholder="buyer@yourcompany.com, planner@yourcompany.com" onChange={(e) => setN('recipients', e.target.value)} />
+          <span className="hint">Separate addresses with commas, semicolons or new lines.</span></div>
+        <div className="field"><label htmlFor="ntf-when">Send for</label>
+          <select id="ntf-when" value={notifications.notifyOn} onChange={(e) => setN('notifyOn', e.target.value as NotificationSettings['notifyOn'])}>
+            <option value="ScheduledRuns">Scheduled runs only (recommended)</option>
+            <option value="AllRuns">Every run, including ones started by hand</option>
+          </select></div>
+        <ResultBox r={probe.result} />
+        {st && st.lastNotice.at && (
+          <dl className="auto-status"><div><dt>Last email</dt><dd>{fmtWhen(st.lastNotice.at)} · {st.lastNotice.ok ? 'OK' : 'Problem'}<div className="muted">{st.lastNotice.message}</div></dd></div></dl>
+        )}
+      </SectionCard>
+    </>
   );
 }
 
@@ -634,6 +737,10 @@ function SettingsEditor({ initial }: { initial: AppSettings }) {
       flash(false, 'Planning defaults contain an empty number.'); setTab('planning'); return;
     }
     if (!Number.isFinite(draft.ai.maxTokens)) { flash(false, 'AI max tokens needs a number.'); setTab('ai'); return; }
+    if (draft.schedule.enabled && !/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.schedule.time)) { flash(false, 'Scheduled run: choose a time of day.'); setTab('automation'); return; }
+    if (draft.schedule.enabled && draft.schedule.days.length === 0) { flash(false, 'Scheduled run: choose at least one day.'); setTab('automation'); return; }
+    if (draft.notifications.enabled && (!draft.notifications.smtpHost.trim() || !draft.notifications.from.trim() || !draft.notifications.recipients.includes('@'))) { flash(false, 'Emails: enter the SMTP server, the From address and at least one recipient.'); setTab('automation'); return; }
+    if (draft.notifications.enabled && !Number.isFinite(draft.notifications.smtpPort)) { flash(false, 'Emails: the port needs a number.'); setTab('automation'); return; }
     if (draft.planning.nonWorkingDates.some((d) => !d.date)) { flash(false, 'Every extra non-working date needs a date.'); setTab('planning'); return; }
     save.mutate(draft, {
       onSuccess: (fresh) => { setDraft(fresh); setBase(fresh); flash(true, 'Settings saved.'); },
@@ -668,6 +775,7 @@ function SettingsEditor({ initial }: { initial: AppSettings }) {
           {tab === 'b1' && <DbSection id="b1" title="SAP Business One database" note="Read-only access to the B1 company database." value={draft.b1Db} onChange={(v) => setDraft({ ...draft, b1Db: v })} test={api.testB1Db} />}
           {tab === 'sl' && <ServiceLayerSection value={draft.serviceLayer} onChange={(v) => setDraft({ ...draft, serviceLayer: v })} />}
           {tab === 'planning' && <PlanningSection value={draft.planning} onChange={(v) => setDraft({ ...draft, planning: v })} />}
+          {tab === 'automation' && <AutomationSection schedule={draft.schedule} notifications={draft.notifications} onSchedule={(v) => setDraft({ ...draft, schedule: v })} onNotifications={(v) => setDraft({ ...draft, notifications: v })} />}
           {tab === 'ai' && <AiSection value={draft.ai} onChange={(v) => setDraft({ ...draft, ai: v })} />}
           {tab === 'users' && <UsersTab />}
         </div>

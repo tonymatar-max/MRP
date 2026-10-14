@@ -66,6 +66,7 @@ public sealed class SettingsService
         c.B1Db.ConnectionStringOverride = DbSettings.MaskOverride(c.B1Db.ConnectionStringOverride);
         c.ServiceLayer.PasswordSet = !string.IsNullOrEmpty(c.ServiceLayer.Password); c.ServiceLayer.Password = "";
         c.Ai.ApiKeySet = !string.IsNullOrEmpty(c.Ai.ApiKey); c.Ai.ApiKey = "";
+        c.Notifications.PasswordSet = !string.IsNullOrEmpty(c.Notifications.Password); c.Notifications.Password = "";
         return c;
     }
 
@@ -77,6 +78,23 @@ public sealed class SettingsService
         if (string.IsNullOrEmpty(m.CobaltDb.Password)) m.CobaltDb.Password = stored.CobaltDb.Password;
         if (string.IsNullOrEmpty(m.B1Db.Password)) m.B1Db.Password = stored.B1Db.Password;
         if (string.IsNullOrEmpty(m.ServiceLayer.Password)) m.ServiceLayer.Password = stored.ServiceLayer.Password;
+        m.Notifications ??= new NotificationSettings();
+        m.Notifications.Password = string.IsNullOrEmpty(m.Notifications.Password) ? stored.Notifications.Password : m.Notifications.Password;
+        m.Notifications.SmtpHost = (m.Notifications.SmtpHost ?? "").Trim();
+        m.Notifications.UserName = (m.Notifications.UserName ?? "").Trim();
+        m.Notifications.From = (m.Notifications.From ?? "").Trim();
+        m.Notifications.Recipients = string.Join(", ", m.Notifications.RecipientList());
+        m.Notifications.SmtpPort = m.Notifications.SmtpPort is < 1 or > 65535 ? 587 : m.Notifications.SmtpPort;
+        if (m.Notifications.NotifyOn is not ("ScheduledRuns" or "AllRuns")) m.Notifications.NotifyOn = "ScheduledRuns";
+        var url = (m.Notifications.PublicUrl ?? "").Trim().TrimEnd('/');
+        m.Notifications.PublicUrl = Uri.TryCreate(url, UriKind.Absolute, out var u) && (u.Scheme is "http" or "https") ? url : "";
+        m.Schedule ??= new ScheduleSettings();
+        m.Schedule.Time = TimeOnly.TryParseExact((m.Schedule.Time ?? "").Trim(), "HH:mm", null, System.Globalization.DateTimeStyles.None, out var at) ? at.ToString("HH:mm") : "02:00";
+        m.Schedule.Days = (m.Schedule.Days ?? new())
+            .Select(d => ScheduleSettings.AllDays.FirstOrDefault(x => d != null && d.StartsWith(x, StringComparison.OrdinalIgnoreCase)))
+            .Where(d => d != null).Select(d => d!).Distinct().ToList();
+        if (m.Schedule.Enabled && m.Schedule.Days.Count == 0) m.Schedule.Days = new(ScheduleSettings.AllDays);
+        m.Schedule.TemplateId = (m.Schedule.TemplateId ?? "").Trim();
         m.Ai ??= new AiSettings();
         m.Ai.ApiKey = string.IsNullOrWhiteSpace(m.Ai.ApiKey) ? stored.Ai.ApiKey : m.Ai.ApiKey.Trim();
         // One or more model ids, comma or newline separated: the first is the primary, the rest are fallbacks.
@@ -140,6 +158,9 @@ public sealed class SettingsService
             s.ServiceLayer.Password = _secrets.Unprotect(s.ServiceLayer.Password);
             s.Ai ??= new AiSettings();
             s.Ai.ApiKey = _secrets.Unprotect(s.Ai.ApiKey);
+            s.Notifications ??= new NotificationSettings();
+            s.Notifications.Password = _secrets.Unprotect(s.Notifications.Password);
+            s.Schedule ??= new ScheduleSettings();
             s.CobaltDb.ConnectionStringOverride = _secrets.Unprotect(s.CobaltDb.ConnectionStringOverride);
             s.B1Db.ConnectionStringOverride = _secrets.Unprotect(s.B1Db.ConnectionStringOverride);
             return s;
@@ -154,11 +175,12 @@ public sealed class SettingsService
     private void Write(AppSettings s)
     {
         var onDisk = s.Clone();
-        onDisk.CobaltDb.PasswordSet = onDisk.B1Db.PasswordSet = onDisk.ServiceLayer.PasswordSet = onDisk.Ai.ApiKeySet = false;
+        onDisk.CobaltDb.PasswordSet = onDisk.B1Db.PasswordSet = onDisk.ServiceLayer.PasswordSet = onDisk.Ai.ApiKeySet = onDisk.Notifications.PasswordSet = false;
         onDisk.CobaltDb.Password = _secrets.Protect(s.CobaltDb.Password);
         onDisk.B1Db.Password = _secrets.Protect(s.B1Db.Password);
         onDisk.ServiceLayer.Password = _secrets.Protect(s.ServiceLayer.Password);
         onDisk.Ai.ApiKey = _secrets.Protect(s.Ai.ApiKey);
+        onDisk.Notifications.Password = _secrets.Protect(s.Notifications.Password);
         // A raw connection string may embed a password, so it is protected whole.
         onDisk.CobaltDb.ConnectionStringOverride = _secrets.Protect(s.CobaltDb.ConnectionStringOverride);
         onDisk.B1Db.ConnectionStringOverride = _secrets.Protect(s.B1Db.ConnectionStringOverride);

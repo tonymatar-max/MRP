@@ -286,3 +286,7 @@ export function useDeleteRunTemplate() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (id: string) => api.deleteRunTemplate(id), onSuccess: () => qc.invalidateQueries({ queryKey: ['run-templates'] }) });
 }
+
+export function useAutomationStatus(enabled = true) {
+  return useQuery({ queryKey: ['automation'], queryFn: api.automationStatus, enabled, staleTime: 0, refetchInterval: 30_000 });
+}

@@ -35,9 +35,11 @@ let settings: AppSettings = {
     defaultLevel: 'Warehouse', purchaseDocument: 'Order', documentGrouping: 'Supplier', transferLeadTimeDays: 1,
   },
   ai: { enabled: false, apiKey: '', apiKeySet: false, model: 'anthropic/claude-opus-5', maxTokens: 1024 },
+  notifications: { enabled: false, smtpHost: '', smtpPort: 587, useSsl: true, userName: '', password: '', passwordSet: false, from: '', recipients: '', publicUrl: '', notifyOn: 'ScheduledRuns' },
+  schedule: { enabled: false, time: '02:00', days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], templateId: '' },
 };
 // Mock "server side" secrets, kept apart from the object returned to the UI.
-const secrets = { cobalt: '', b1: '', sl: '', ai: '' };
+const secrets = { cobalt: '', b1: '', sl: '', ai: '', smtp: '' };
 
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 export const currentUsername = () => current?.username ?? 'unknown';
@@ -97,6 +99,8 @@ export function putSettings(s: AppSettings): AppSettings {
   if (next.serviceLayer.password) secrets.sl = next.serviceLayer.password;
   if (next.ai.apiKey) secrets.ai = next.ai.apiKey;
   next.ai.apiKey = ''; next.ai.apiKeySet = !!secrets.ai;
+  if (next.notifications.password) secrets.smtp = next.notifications.password;
+  next.notifications.password = ''; next.notifications.passwordSet = !!secrets.smtp;
   next.cobaltDb.password = ''; next.b1Db.password = ''; next.serviceLayer.password = '';
   next.cobaltDb.passwordSet = !!secrets.cobalt;
   next.b1Db.passwordSet = !!secrets.b1;
@@ -124,6 +128,24 @@ export function testServiceLayer(s: AppSettings['serviceLayer']): OkResult {
   if (!s.baseUrl || !s.companyDb || !s.userName) return { ok: false, message: 'Base URL, company DB and user are required.' };
   if (!s.password && !s.passwordSet) return { ok: false, message: 'Login failed: no password supplied.' };
   return { ok: true, message: 'Service Layer login and logout succeeded.' };
+}
+export function testEmail(n: AppSettings['notifications']): OkResult {
+  requireAdmin();
+  if (!n.smtpHost.trim()) return { ok: false, message: 'Enter the SMTP server.' };
+  if (!n.from.trim()) return { ok: false, message: 'Enter the From address.' };
+  if (!n.recipients.split(/[,;\n]/).some((x) => x.includes('@'))) return { ok: false, message: 'Enter at least one recipient email address.' };
+  return { ok: true, message: 'Test email sent (mock: nothing was really sent).' };
+}
+export function automationStatus() {
+  requireAdmin();
+  const s = settings.schedule;
+  const next = new Date(); next.setDate(next.getDate() + 1); next.setHours(Number(s.time.slice(0, 2)), Number(s.time.slice(3, 5)), 0, 0);
+  return {
+    schedule: { ...s, nextRunAt: s.enabled ? next.toISOString() : null },
+    notificationsConfigured: settings.notifications.enabled && !!settings.notifications.smtpHost,
+    lastRun: { at: null, id: null, ok: null, message: null },
+    lastNotice: { at: null, ok: null, message: null, newExceptions: 0 },
+  };
 }
 export function testAi(a: AppSettings['ai']): OkResult {
   requireAdmin();

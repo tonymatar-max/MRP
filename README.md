@@ -48,7 +48,7 @@ Settings > **AI** (Admin) turns on an assistant that explains a saved run. It us
 - Off by default; when off (or without a key) the buttons are hidden (administrators see an "Enable AI in Settings" hint). Details: `docs/ai-contract.md`.
 
 ## Security model
-- Sign-in is cookie based; roles **Admin** (settings, users, release to B1) and **Planner**.
+- Sign-in is cookie based; roles **Admin** (settings, users, release anything to B1, Execute, push to SAP B1), **Buyer** (a planner who can also release **purchase orders and purchase requests**; the server refuses a release that contains production orders or transfers) and **Planner** (run MRP, view, edit master data and forecasts; cannot release).
 - Passwords and raw connection strings are encrypted at rest (ASP.NET DataProtection, keys in `data\keys`, DPAPI machine scope) and are never returned by the API; saving with a blank password keeps the stored one.
 - The service binds to `localhost`. Expose it to planners through IIS or a reverse proxy with TLS.
 
@@ -106,6 +106,16 @@ Each exception that has a well-defined action shows an **Execute** button (Admin
 ## Calendar
 The Calendar screen shows everything dated in a run: sales orders due, forecasts, open purchase/production orders, recommended releases and due dates, planner action messages, capacity overloads, and non-working days. Month, week and agenda views; filter by kind, item and warehouse; click a day for its list with links to the orders. Events are stored with each run (table `CalendarEvent`), so the calendar always matches the plan it came from. Overdue items sit on the first day of the horizon.
 
+## Run names and templates
+The Run MRP wizard's last step takes an optional **Run name** (shown in the run picker and on the Dashboard) and notes. At the top of the wizard a **Template** bar saves the options you chose under a name (**Save as template...**), applies a saved one, updates it with the current options, or deletes it, so nobody re-selects the same options each time. A template never stores the "plan as of" date: it always plans from today. Any signed-in user can save and use templates (`/api/run-templates`).
+
+## Automation: scheduled runs and new-exception emails
+**Settings > Automation** (Admin).
+- **Scheduled run:** run MRP at a time of day (server local time) on chosen days, with the Settings defaults or a saved template. Runs are named "Scheduled: ..." and started by `scheduler`. One run per day, even across restarts. A run missed because the service was stopped for more than 6 hours is skipped and recorded, never started at a surprising hour. **Run now** runs exactly what the schedule runs, to check the setup.
+- **New-exception emails:** after a scheduled run (or every run, your choice) the app compares the run with the one before it and emails the exceptions that are new (a different type, item, warehouse or source-document line). Nothing is sent when nothing is new. Configure an SMTP server (STARTTLS, port 587 by default; the password is stored protected like the other secrets), the From address, recipients and an optional link. **Send test email** uses the values on screen. The Dashboard also shows a **New exceptions** KPI.
+- A failed email never fails a run: the reason is shown under Settings > Automation ("Last email").
+- Status: `GET /api/automation/status`, `POST /api/automation/run-now` (both Admin).
+
 ## SAP push log
 Every write to SAP B1 (create purchase order / purchase request / transfer request / production order, move a due date, close or cancel, Service Layer session failure) is recorded permanently with who, when, run, item, quantity, the SAP document (for example `OPOR:1187`), a summary and SAP's complete error message. Page **Data > SAP push log** (filters, CSV export), `GET /api/sap-log`. The log is add-only and never stores passwords or request bodies. Details: `docs/sap-log-contract.md`.
 
@@ -124,6 +134,7 @@ Publish over the top and restart the service. The database is brought forward au
 ## Status / known gaps
 - Persistence, settings, auth, vendors and the calendar were verified on SQL Server 2022, with the published exe, and read-only against the real B1 demo company `SBODemoHO`.
 - Write-back was verified against a **fake** Service Layer in automated tests. The production-order payload fields (`ItemNo`, `PlannedQuantity`, ...) are from the documented API shape; confirm on your live system.
+- Email uses the .NET SMTP client (STARTTLS); implicit TLS on port 465 is not supported.
 - Arabic is partial: the shell, sign-in, Dashboard, Planned Orders, Exceptions and SAP push log are translated; Settings, the run wizard, Calendar, Capacity, Forecasts, Master data and the Execute dialogs are still English (they show English text inside the right-to-left layout). The Arabic wording has not been reviewed by a native speaker.
 - Not available from B1, so not modelled except through Settings: setup time, real capacity and efficiency per resource.
 - Cobalt-managed forecasts apply to mock runs; `b1-sql` runs use B1's own forecasts.

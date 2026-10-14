@@ -19,3 +19,9 @@
 @media (max-width: 1100px) {
   .page, .page-head { padding-left: 18px; padding-right: 18px; }
 }
+
+/* Settings > Automation */
+.auto-status { display: grid; gap: 8px; margin: 4px 0 0; padding: 10px 12px; background: var(--section); border-radius: var(--radius-sm); }
+.auto-status div { display: grid; grid-template-columns: 110px 1fr; gap: 8px; }
+.auto-status dt { color: var(--muted); }
+.auto-status dd { margin: 0; }

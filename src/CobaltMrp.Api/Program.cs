@@ -70,6 +70,14 @@ builder.Services.AddScoped<IRunTemplateStore>(sp =>
         ? new SqlRunTemplateStore(sp.GetRequiredService<CobaltMrpDbContext>())
         : sp.GetRequiredService<MemoryRunTemplateStore>());
 builder.Services.AddScoped<RunPlanner>();
+builder.Services.AddScoped<RunLauncher>();
+builder.Services.AddScoped<ExceptionNotifier>();
+builder.Services.AddSingleton(new AutomationState(dataDir));
+builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
+builder.Services.AddSingleton<IScheduledJob, ScheduledJob>();
+builder.Services.AddSingleton(sp => new ScheduleTicker(sp.GetRequiredService<SettingsService>(), sp.GetRequiredService<AutomationState>(),
+    sp.GetRequiredService<IScheduledJob>(), sp.GetRequiredService<ILoggerFactory>().CreateLogger<ScheduleTicker>()));
+builder.Services.AddHostedService<ScheduledRunService>();
 builder.Services.AddSingleton<ReleaseService>();
 builder.Services.AddSingleton<ExceptionExecutor>();
 builder.Services.AddSingleton<ItemPushService>();

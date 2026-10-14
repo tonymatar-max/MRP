@@ -298,6 +298,8 @@ export interface AppSettings {
   serviceLayer: ServiceLayerSettings;
   planning: PlanningSettings;
   ai: AiSettings;
+  notifications: NotificationSettings;
+  schedule: ScheduleSettings;
 }
 
 export interface AiStatus { enabled: boolean; configured: boolean; model: string }
@@ -463,3 +465,19 @@ export interface PushExecuteResult { pushed: number; failed: number; items: Push
 
 // ----- saved Run MRP option sets -----
 export interface RunTemplate { id: string; name: string; createdBy: string; updatedAt: string; criteria: RunCriteria }
+
+// ----- automation: new-exception emails and scheduled runs -----
+export interface NotificationSettings {
+  enabled: boolean; smtpHost: string; smtpPort: number; useSsl: boolean; userName: string;
+  /** Only ever sent TO the server. A GET returns "" and passwordSet says whether one is stored. */
+  password: string; passwordSet: boolean;
+  from: string; recipients: string; publicUrl: string; notifyOn: 'ScheduledRuns' | 'AllRuns';
+}
+export interface ScheduleSettings { enabled: boolean; time: string; days: Weekday[]; templateId: string }
+export interface AutomationStatus {
+  schedule: { enabled: boolean; time: string; days: string[]; templateId: string; nextRunAt: string | null };
+  notificationsConfigured: boolean;
+  lastRun: { at: string | null; id: string | null; ok: boolean | null; message: string | null };
+  lastNotice: { at: string | null; ok: boolean | null; message: string | null; newExceptions: number };
+}
+export interface ScheduledOutcome { ok: boolean; message: string; runId: string | null }

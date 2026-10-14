@@ -30,6 +30,7 @@ public static class RunEndpoints
     {
         api.MapMasterData();
         api.MapRunTemplates();
+        api.MapAutomation();
 
         api.MapGet("/status", (SettingsService settings, IRunStore store, IConfiguration cfg) =>
         {
@@ -99,22 +100,14 @@ public static class RunEndpoints
             return Results.File(bytes, "text/csv; charset=utf-8", $"{detail.Metric}.csv");
         });
 
-        api.MapPost("/runs", async (RunRequest req, HttpContext ctx, IRunStore store, MrpEngine engine,
+        api.MapPost("/runs", async (RunRequest req, HttpContext ctx, RunLauncher launcher, ExceptionNotifier notifier,
             RunPlanner planner, CancellationToken ct) =>
         {
             // The old simple body still works: it is mapped onto the Settings defaults.
             var criteria = req.Criteria ?? planner.FromLegacy(req);
-            var (prep, error) = await planner.PrepareAsync(criteria, ctx.User.Identity?.Name ?? "system", ct);
-            if (prep is null) return Results.BadRequest(new { message = error });
-
-            MrpRun run;
-            try { run = engine.Run(prep.Data, prep.Options); }
-            // e.g. a BOM that contains itself: tell the planner what is wrong instead of a bare 500
-            catch (InvalidOperationException e) { return Results.BadRequest(new { message = e.Message }); }
-            run.Notes = req.Notes;
-            run.Name = string.IsNullOrWhiteSpace(req.Name) ? null : req.Name.Trim()[..Math.Min(req.Name.Trim().Length, 100)];
-            run.CriteriaJson = prep.Criteria.ToJson();
-            await store.AddAsync(run, ct);
+            var (run, error) = await launcher.LaunchAsync(criteria, ctx.User.Identity?.Name ?? "system", req.Name, req.Notes, ct);
+            if (run is null) return Results.BadRequest(new { message = error });
+            await notifier.NotifyAsync(run, scheduled: false, ct);      // only sends when Settings > Automation says "all runs"
             return Results.Ok(RunSummary.From(run));
         });
 

@@ -136,6 +136,9 @@ export const AR: Record<string, string> = {
   'Your role cannot release this kind of order': 'دورك لا يسمح بإصدار هذا النوع من الأوامر',
   'Only administrators and buyers can release orders to SAP B1': 'المسؤولون والمشترون فقط يمكنهم إصدار الأوامر إلى SAP B1',
   Buyer: 'مشتري',
+  'New exceptions': 'استثناءات جديدة',
+  'Not in the previous run': 'غير موجودة في التشغيل السابق',
+  'No earlier run to compare': 'لا يوجد تشغيل سابق للمقارنة',
   // templates and run names
   Template: 'قالب',
   Templates: 'القوالب',

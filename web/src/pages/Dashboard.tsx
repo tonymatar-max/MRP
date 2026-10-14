@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useRun, useRuns } from '../api/hooks';
+import { useNewExceptions, useRun, useRuns } from '../api/hooks';
 import { Empty, ErrorState, Kpi, Loading, PageHeader } from '../components/ui';
 import { RunDialog } from '../components/RunDialog';
 import { RunWizard } from '../components/wizard/RunWizard';
@@ -19,6 +19,7 @@ export default function Dashboard() {
   const runs = useRuns();
   const run = useRun(runId);
   const summary = useRunSummary(runId);
+  const fresh = useNewExceptions(runId);
 
   const d = run.data;
   const count = (t: string) => d?.plannedOrders.filter((p) => p.type === t).length ?? 0;
@@ -58,6 +59,7 @@ export default function Dashboard() {
               {(trs > 0 || d.criteria?.transfers?.enabled) && <Kpi label="Transfers" value={trs} meta="Transfer requests" />}
               <Kpi label="Planned production" value={prods} meta="Production orders" />
               <Kpi label="Exceptions" value={d.exceptions.length} tone={d.exceptions.length ? 'warn' : 'ok'} meta="Planner actions" />
+              <Kpi label="New exceptions" value={fresh.hasPrevious ? fresh.count : '—'} tone={fresh.hasPrevious ? (fresh.count ? 'warn' : 'ok') : undefined} meta={fresh.hasPrevious ? 'Not in the previous run' : 'No earlier run to compare'} />
               <Kpi label="Overloaded WCs" value={overloaded} tone={overloaded ? 'danger' : 'ok'} meta="Work centers" />
             </div>
             <div className="grid-2">

@@ -197,6 +197,51 @@ public sealed class AiSettings
     public AiSettings Clone() => (AiSettings)MemberwiseClone();
 }
 
+/// <summary>Email an alert when a run produces exceptions the run before it did not have. OFF by default.</summary>
+public sealed class NotificationSettings
+{
+    public bool Enabled { get; set; }
+    public string SmtpHost { get; set; } = "";
+    /// <summary>587 (STARTTLS) by default. Implicit TLS on 465 is not supported by the .NET SMTP client.</summary>
+    public int SmtpPort { get; set; } = 587;
+    public bool UseSsl { get; set; } = true;
+    public string UserName { get; set; } = "";
+    /// <summary>Plain text in memory and on the wire from the UI only. Never returned by GET (see PasswordSet).</summary>
+    public string Password { get; set; } = "";
+    public bool PasswordSet { get; set; }
+    public string From { get; set; } = "";
+    /// <summary>Addresses separated by comma, semicolon or newline.</summary>
+    public string Recipients { get; set; } = "";
+    /// <summary>The address planners use to open Cobalt MRP; the email links to its Exceptions page. Optional.</summary>
+    public string PublicUrl { get; set; } = "";
+    /// <summary>"ScheduledRuns" (default: a person who starts a run sees the result anyway) or "AllRuns".</summary>
+    public string NotifyOn { get; set; } = "ScheduledRuns";
+
+    [JsonIgnore]
+    public bool IsConfigured => Enabled && !string.IsNullOrWhiteSpace(SmtpHost) && !string.IsNullOrWhiteSpace(From) && RecipientList().Count > 0;
+
+    public List<string> RecipientList() => (Recipients ?? "")
+        .Split(new[] { ',', ';', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Where(x => x.Contains('@')).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+    public NotificationSettings Clone() => (NotificationSettings)MemberwiseClone();
+}
+
+/// <summary>Run MRP by itself at a fixed time of day (the server's local time). OFF by default.</summary>
+public sealed class ScheduleSettings
+{
+    public static readonly string[] AllDays = { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
+
+    public bool Enabled { get; set; }
+    /// <summary>"HH:mm", 24-hour, the server's local time.</summary>
+    public string Time { get; set; } = "02:00";
+    public List<string> Days { get; set; } = new(AllDays);
+    /// <summary>A saved Run MRP template (id) to run with; empty = the Settings defaults.</summary>
+    public string TemplateId { get; set; } = "";
+
+    public ScheduleSettings Clone() => new() { Enabled = Enabled, Time = Time, Days = Days.ToList(), TemplateId = TemplateId };
+}
+
 /// <summary>Everything an administrator configures from the Settings screen.</summary>
 public sealed class AppSettings
 {
@@ -206,10 +251,13 @@ public sealed class AppSettings
     public ServiceLayerSettings ServiceLayer { get; set; } = new();
     public PlanningSettings Planning { get; set; } = new();
     public AiSettings Ai { get; set; } = new();
+    public NotificationSettings Notifications { get; set; } = new();
+    public ScheduleSettings Schedule { get; set; } = new();
 
     public AppSettings Clone() => new()
     {
         CobaltDb = CobaltDb.Clone(), B1Db = B1Db.Clone(), ServiceLayer = ServiceLayer.Clone(),
         Planning = Planning.Clone(), Ai = Ai?.Clone() ?? new AiSettings(),
+        Notifications = Notifications?.Clone() ?? new NotificationSettings(), Schedule = Schedule?.Clone() ?? new ScheduleSettings(),
     };
 }
