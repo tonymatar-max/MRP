@@ -12,7 +12,7 @@ namespace CobaltMrp.Api.Services;
 public static class CobaltSchema
 {
     public static readonly string[] Tables =
-        { "MrpRun", "PlannedOrder", "PeggingLink", "ExceptionMessage", "CapacityLoad", "Forecast", "CalendarEvent", "ItemPlanning", "SupplierPlanning", "SapPushLog" };
+        { "MrpRun", "PlannedOrder", "PeggingLink", "ExceptionMessage", "CapacityLoad", "Forecast", "CalendarEvent", "ItemPlanning", "SupplierPlanning", "SapPushLog", "RunTemplate" };
 
     public static async Task<string> EnsureAsync(string connectionString, CancellationToken ct = default)
     {
@@ -141,6 +141,19 @@ BEGIN
     );
     CREATE INDEX IX_SapPushLog_At ON dbo.SapPushLog ([At]);
 END", ct);
+
+        // v8: a name on each run, and saved Run MRP templates.
+        await db.Database.ExecuteSqlRawAsync(@"
+IF COL_LENGTH('dbo.MrpRun', 'Name') IS NULL ALTER TABLE dbo.MrpRun ADD Name NVARCHAR(100) NULL;
+IF OBJECT_ID('dbo.RunTemplate') IS NULL
+    CREATE TABLE dbo.RunTemplate (
+        Id           UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
+        Name         NVARCHAR(80)     NOT NULL,
+        CriteriaJson NVARCHAR(MAX)    NOT NULL,
+        CreatedBy    NVARCHAR(100)    NOT NULL,
+        CreatedAt    DATETIMEOFFSET   NOT NULL,
+        UpdatedAt    DATETIMEOFFSET   NOT NULL
+    );", ct);
     }
 
     public static async Task<int> CountTablesAsync(string connectionString, CancellationToken ct)

@@ -315,6 +315,7 @@ export function createRun(opts: {
   bucketDays?: number;
   source?: string;
   notes?: string;
+  name?: string;
 }): MrpRun {
   const now = new Date();
   const crit = opts.criteria;
@@ -328,6 +329,7 @@ export function createRun(opts: {
     horizonStart: isoDate(now),
     horizonEnd: isoDate(addDays(now, horizonDays)),
     bucketDays: opts.bucketDays ?? 7,
+    name: opts.name || null,
     notes: opts.notes || `Manual run (${opts.source ?? 'mock'})`,
     plannedOrderCount: 0,
     exceptionCount: 0,

@@ -4,26 +4,26 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CobaltMrp.Api.Services;
 
-public sealed record RunRequest(string[]? Warehouses, int? HorizonDays, int? BucketDays, string? Source, string? Notes = null, RunCriteria? Criteria = null);
+public sealed record RunRequest(string[]? Warehouses, int? HorizonDays, int? BucketDays, string? Source, string? Notes = null, RunCriteria? Criteria = null, string? Name = null);
 public sealed record PreviewRequest(RunCriteria? Criteria);
 public sealed record ReleaseRequest(Guid[] PlannedOrderIds);
 
 public sealed record RunSummary(Guid Id, DateTimeOffset RunAt, string RunBy, DateOnly HorizonStart,
-    DateOnly HorizonEnd, int BucketDays, int PlannedOrderCount, int ExceptionCount, int OverloadedBuckets)
+    DateOnly HorizonEnd, int BucketDays, int PlannedOrderCount, int ExceptionCount, int OverloadedBuckets, string? Name = null, string? Notes = null)
 {
     public static RunSummary From(MrpRun r) => new(r.Id, r.RunAt, r.RunBy, r.HorizonStart, r.HorizonEnd,
-        r.BucketDays, r.PlannedOrders.Count, r.Exceptions.Count, r.CapacityLoads.Count(c => c.Overloaded));
+        r.BucketDays, r.PlannedOrders.Count, r.Exceptions.Count, r.CapacityLoads.Count(c => c.Overloaded), r.Name, r.Notes);
 }
 
 public sealed record RunDetail(Guid Id, DateTimeOffset RunAt, string RunBy, DateOnly HorizonStart,
     DateOnly HorizonEnd, int BucketDays, int PlannedOrderCount, int ExceptionCount, int OverloadedBuckets,
     List<PlannedOrderDto> PlannedOrders, List<PeggingLink> Pegging, List<ExceptionDto> Exceptions,
-    List<CapacityLoad> CapacityLoads, RunCriteria? Criteria)
+    List<CapacityLoad> CapacityLoads, RunCriteria? Criteria, string? Name = null, string? Notes = null)
 {
     public RunDetail(RunSummary s, List<PlannedOrderDto> po, List<PeggingLink> pg, List<ExceptionDto> ex,
         List<CapacityLoad> cl, RunCriteria? criteria)
         : this(s.Id, s.RunAt, s.RunBy, s.HorizonStart, s.HorizonEnd, s.BucketDays, s.PlannedOrderCount,
-               s.ExceptionCount, s.OverloadedBuckets, po, pg, ex, cl, criteria) { }
+               s.ExceptionCount, s.OverloadedBuckets, po, pg, ex, cl, criteria, s.Name, s.Notes) { }
 }
 
 /// <summary>Filters for the Calendar screen. Kinds empty = all kinds.</summary>
@@ -93,12 +93,12 @@ public sealed class SqlRunStore : IRunStore
         var rows = await _db.Runs.AsNoTracking().OrderByDescending(r => r.RunAt).Take(50)
             .Select(r => new
             {
-                r.Id, r.RunAt, r.RunBy, r.HorizonStart, r.HorizonEnd, r.BucketDays,
+                r.Id, r.RunAt, r.RunBy, r.HorizonStart, r.HorizonEnd, r.BucketDays, r.Name, r.Notes,
                 Orders = r.PlannedOrders.Count(), Exc = r.Exceptions.Count(),
                 Over = r.CapacityLoads.Count(c => c.RequiredHours > c.AvailableHours),
             }).ToListAsync(ct);
         return rows.Select(r => new RunSummary(r.Id, r.RunAt, r.RunBy, r.HorizonStart, r.HorizonEnd,
-            r.BucketDays, r.Orders, r.Exc, r.Over)).ToList();
+            r.BucketDays, r.Orders, r.Exc, r.Over, r.Name, r.Notes)).ToList();
     }
 }
 

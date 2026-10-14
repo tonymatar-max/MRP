@@ -1,3 +1,4 @@
+using CobaltMrp.Api.Auth;
 using CobaltMrp.Api.Services;
 using CobaltMrp.Api.Settings;
 using CobaltMrp.Data;
@@ -28,6 +29,7 @@ public static class RunEndpoints
     public static void MapRuns(this RouteGroupBuilder api)
     {
         api.MapMasterData();
+        api.MapRunTemplates();
 
         api.MapGet("/status", (SettingsService settings, IRunStore store, IConfiguration cfg) =>
         {
@@ -110,6 +112,7 @@ public static class RunEndpoints
             // e.g. a BOM that contains itself: tell the planner what is wrong instead of a bare 500
             catch (InvalidOperationException e) { return Results.BadRequest(new { message = e.Message }); }
             run.Notes = req.Notes;
+            run.Name = string.IsNullOrWhiteSpace(req.Name) ? null : req.Name.Trim()[..Math.Min(req.Name.Trim().Length, 100)];
             run.CriteriaJson = prep.Criteria.ToJson();
             await store.AddAsync(run, ct);
             return Results.Ok(RunSummary.From(run));
@@ -201,6 +204,13 @@ public static class RunEndpoints
             if (run is null) return Results.NotFound();
             var ids = req.PlannedOrderIds.ToHashSet();
             var selected = run.PlannedOrders.Where(o => ids.Contains(o.Id)).ToList();
+            // A buyer may release purchase orders and purchase requests only. Refuse the whole request, never silently drop lines.
+            if (!ctx.User.IsInRole(Roles.Admin))
+            {
+                var notAllowed = selected.Where(o => o.Type is not (PlannedOrderType.PurchaseOrder or PlannedOrderType.PurchaseRequest)).ToList();
+                if (notAllowed.Count > 0)
+                    return Results.Json(new { message = $"Buyers can release purchase orders and purchase requests only. Remove the {notAllowed.Count} production or transfer order(s) from the selection ({string.Join(", ", notAllowed.Take(5).Select(o => o.ItemCode))}{(notAllowed.Count > 5 ? ", ..." : "")})." }, statusCode: 403);
+            }
             var grouping = RunCriteria.FromJson(run.CriteriaJson)?.Purchasing.Grouping ?? DocumentGrouping.Supplier;
             ReleaseOutcome outcome;
             try { outcome = await release.ReleaseAsync(store, selected, ct, new PushContext(pushLog, ctx.User.Identity?.Name ?? "", id), grouping); }
@@ -218,7 +228,7 @@ public static class RunEndpoints
                 failures = outcome.Failures.Select(f => new { plannedOrderId = f.PlannedOrderId, error = f.Error }),
                 plannedOrders = selected.Select(o => PlannedOrderDto.From(o, sl)).ToList(),
             });
-        }).RequireAuthorization("Admin");
+        }).RequireAuthorization("Release");
 
         // Execute an exception: release its planned order in SAP B1, or move/close the existing SAP B1 order.
         // Preview reads the live document and changes nothing. Admin only.

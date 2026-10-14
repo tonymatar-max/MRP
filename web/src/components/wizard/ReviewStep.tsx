@@ -24,7 +24,7 @@ function Stat({ label, value, tone, metric, what, onOpen }: {
   );
 }
 
-export function ReviewStep({ c, notes, onNotes }: { c: RunCriteria; notes: string; onNotes: (n: string) => void }) {
+export function ReviewStep({ c, notes, onNotes, name, onName }: { c: RunCriteria; notes: string; onNotes: (n: string) => void; name: string; onName: (n: string) => void }) {
   const preview = usePreviewRun();
   const last = useRef('');
   const key = JSON.stringify(c);
@@ -106,6 +106,8 @@ export function ReviewStep({ c, notes, onNotes }: { c: RunCriteria; notes: strin
         </>
       )}
       <div className="field">
+        <label htmlFor="wz-name">Run name <span className="hint">optional: helps tell runs apart</span></label>
+        <input id="wz-name" maxLength={100} value={name} onChange={(e) => onName(e.target.value)} placeholder="e.g. Nightly regenerative, all warehouses" />
         <label htmlFor="wz-notes">Notes <span className="hint">saved with the run</span></label>
         <textarea id="wz-notes" rows={2} value={notes} maxLength={500} onChange={(e) => onNotes(e.target.value)} placeholder="e.g. Quarter-end regenerative run, all warehouses" />
       </div>

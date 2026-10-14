@@ -12,7 +12,7 @@ export function RunPicker() {
     <select value={runId ?? ''} onChange={(e) => setRunId(e.target.value)} title={tr('Select MRP run')} aria-label={tr('Select MRP run')}>
       {runs.map((r) => (
         <option key={r.id} value={r.id}>
-          {[fmtDateTime(r.runAt), r.runBy, tr('{n} orders', { n: r.plannedOrderCount }), r.notes ? (r.notes.length > 40 ? `${r.notes.slice(0, 40)}…` : r.notes) : '']
+          {[r.name, fmtDateTime(r.runAt), r.runBy, tr('{n} orders', { n: r.plannedOrderCount }), r.notes ? (r.notes.length > 40 ? `${r.notes.slice(0, 40)}…` : r.notes) : '']
             .filter(Boolean).join(' · ')}
         </option>
       ))}

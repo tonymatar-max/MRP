@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
-import { useReleaseOrders, useRun } from '../api/hooks';
+import { useReleaseOrders, useRun, useStatus } from '../api/hooks';
 import type { PlannedOrder, ReleaseResult } from '../api/types';
 import { Dialog, ErrorState, Llc, Loading, PageHeader, Pill } from '../components/ui';
 import { useAuth } from '../components/Auth';
@@ -63,7 +63,11 @@ const MAX_LINES_PER_DOCUMENT = 100;
 export default function PlannedOrders() {
   const tr = useT();
   const { runId } = useSelectedRun();
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
+  const isBuyer = user.role === 'Buyer';
+  const canRelease = isAdmin || isBuyer;
+  /** A buyer releases purchase orders and requests only; an administrator releases anything. */
+  const mayRelease = (o: { type: string }) => isAdmin || (isBuyer && (o.type === 'PurchaseOrder' || o.type === 'PurchaseRequest'));
   const run = useRun(runId);
   const release = useReleaseOrders(runId ?? '');
   const [params] = useSearchParams();
@@ -121,9 +125,10 @@ export default function PlannedOrders() {
     });
   }, [visibleIds]);
   // THE set the Release button, the counters and the API call all use: selected, in the visible list, not yet in SAP B1.
-  const picked = useMemo(() => rows.filter((r) => sel.has(r.id) && !r.b1DocEntry), [rows, sel]);
+  const picked = useMemo(() => rows.filter((r) => sel.has(r.id) && !r.b1DocEntry && mayRelease(r)), [rows, sel, isAdmin, isBuyer]);   // eslint-disable-line react-hooks/exhaustive-deps
   const noVendorSel = useMemo(() => picked.filter((o) => o.type === 'PurchaseOrder' && !o.vendorSource).length, [picked]);
   // How the server will combine these orders when released (the run's own setting), and what the page shows for it.
+  const writeback = useStatus().data?.writebackEnabled !== false;    // when off, releasing only firms the orders
   const grouping = run.data?.criteria?.purchasing?.grouping ?? 'Supplier';
   const canGroup = grouping !== 'None';
   const sections = useMemo(() => {
@@ -170,7 +175,7 @@ export default function PlannedOrders() {
     if (!sections) return rows;
     return sections.flatMap((sec) => ('row' in sec ? [sec.row] : collapsed.has(sec.key) ? [] : sec.members));
   }, [sections, rows, collapsed]);
-  const shownSel = useMemo(() => shown.filter((r) => !r.b1DocEntry), [shown]);
+  const shownSel = useMemo(() => shown.filter((r) => !r.b1DocEntry && mayRelease(r)), [shown, isAdmin, isBuyer]);   // eslint-disable-line react-hooks/exhaustive-deps
   const pickedShown = shownSel.filter((r) => sel.has(r.id)).length;
   const allSel = shownSel.length > 0 && pickedShown === shownSel.length;
   const toggleAll = () => setSel((s0) => {
@@ -180,7 +185,7 @@ export default function PlannedOrders() {
   });
   const toggleGroup = (members: PlannedOrder[]) => setSel((s0) => {
     const n = new Set(s0);
-    const free = members.filter((m) => !m.b1DocEntry);
+    const free = members.filter((m) => !m.b1DocEntry && mayRelease(m));
     const every = free.every((m) => n.has(m.id));
     for (const m of free) { if (every) n.delete(m.id); else n.add(m.id); }
     return n;
@@ -217,8 +222,8 @@ export default function PlannedOrders() {
             onClick={() => setOpen(open === o.id ? null : o.id)} style={{ cursor: 'pointer' }}
             onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setOpen(open === o.id ? null : o.id); } }}>
             <td onClick={(e) => e.stopPropagation()}>
-              <input type="checkbox" checked={sel.has(o.id) && !o.b1DocEntry} disabled={!!o.b1DocEntry}
-                title={o.b1DocEntry ? tr('Already in SAP B1') : undefined}
+              <input type="checkbox" checked={sel.has(o.id) && !o.b1DocEntry} disabled={!!o.b1DocEntry || !mayRelease(o)}
+                title={o.b1DocEntry ? tr('Already in SAP B1') : !mayRelease(o) ? tr('Your role cannot release this kind of order') : undefined}
                 aria-label={tr('Select {item}, {type}', { item: o.itemCode, type: tr(orderTypeLabel(o.type)) })} onChange={() => toggle(o.id)} />
             </td>
             <td><Llc level={o.lowLevelCode} /></td>
@@ -247,8 +252,8 @@ export default function PlannedOrders() {
       <PageHeader
         crumb="Planning"
         title="Planned Orders"
-        actions={<><RunPicker /><AskAiButton /><button className="btn primary" disabled={!isAdmin || !picked.length || release.isPending} title={!isAdmin ? tr('Only administrators can release orders to SAP B1') : noVendorSel ? tr('{n} selected purchase order(s) have no vendor and will fail to release', { n: noVendorSel }) : undefined} onClick={doRelease}>
-          {release.isPending ? tr('Releasing…') : tr('Release to SAP B1 ({n})', { n: picked.length })}
+        actions={<><RunPicker /><AskAiButton /><button className="btn primary" disabled={!canRelease || !picked.length || release.isPending} title={!canRelease ? tr('Only administrators and buyers can release orders to SAP B1') : noVendorSel ? tr('{n} selected purchase order(s) have no vendor and will fail to release', { n: noVendorSel }) : undefined} onClick={doRelease}>
+          {release.isPending ? tr('Releasing…') : writeback ? tr('Release to SAP B1 ({n})', { n: picked.length }) : tr('Firm orders ({n})', { n: picked.length })}
         </button></>}
       />
       <div className="page">
@@ -270,7 +275,7 @@ export default function PlannedOrders() {
             </label>
           )}
           <div className="spacer" />
-          {picked.length > 0 && <span className="muted">{tr('{n} selected → {d} document(s)', { n: picked.length, d: docCount })}</span>}
+          {picked.length > 0 && <span className="muted">{writeback ? tr('{n} selected → {d} document(s)', { n: picked.length, d: docCount }) : tr('{n} selected (SAP B1 write-back is off: releasing only firms them)', { n: picked.length })}</span>}
           {sections && sortKey !== 'releaseDate' && <span className="muted">{tr('Groups follow their first line in the sort')}</span>}
           <span className="muted">{tr('{n} of {total} orders', { n: rows.length, total: all.length })}</span>
         </div>

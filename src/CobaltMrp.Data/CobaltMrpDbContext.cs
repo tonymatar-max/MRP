@@ -19,6 +19,7 @@ public sealed class CobaltMrpDbContext : DbContext
     public DbSet<ItemOverride> ItemOverrides => Set<ItemOverride>();
     public DbSet<SupplierSetting> SupplierSettings => Set<SupplierSetting>();
     public DbSet<SapPushLogEntry> SapPushLog => Set<SapPushLogEntry>();
+    public DbSet<RunTemplate> RunTemplates => Set<RunTemplate>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -28,6 +29,7 @@ public sealed class CobaltMrpDbContext : DbContext
             e.ToTable("MrpRun");
             e.HasKey(x => x.Id);
             e.Property(x => x.RunBy).HasMaxLength(100);
+            e.Property(x => x.Name).HasMaxLength(100);
             e.Property(x => x.Notes).HasMaxLength(1000);
             e.Property(x => x.CriteriaJson);          // nvarchar(max): the wizard criteria used
             e.HasMany(x => x.PlannedOrders).WithOne().HasForeignKey("MrpRunId").OnDelete(DeleteBehavior.Cascade);
@@ -113,6 +115,15 @@ public sealed class CobaltMrpDbContext : DbContext
             e.Property(x => x.Notes).HasMaxLength(1000);
             e.Property(x => x.UpdatedBy).HasMaxLength(100);
             e.Ignore(x => x.IsEmpty);
+        });
+
+        b.Entity<RunTemplate>(e =>
+        {
+            e.ToTable("RunTemplate");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Name).HasMaxLength(80);
+            e.Property(x => x.CriteriaJson);
+            e.Property(x => x.CreatedBy).HasMaxLength(100);
         });
 
         // Every write to SAP B1, kept for good (who, when, what, outcome).

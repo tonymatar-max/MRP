@@ -7,7 +7,9 @@ public static class Roles
 {
     public const string Admin = "Admin";
     public const string Planner = "Planner";
-    public static bool IsValid(string? r) => r is Admin or Planner;
+    /// <summary>A planner who may also release purchase orders and purchase requests to SAP B1 (never production orders or transfers).</summary>
+    public const string Buyer = "Buyer";
+    public static bool IsValid(string? r) => r is Admin or Planner or Buyer;
 }
 
 public sealed class UserRecord
@@ -58,7 +60,7 @@ public sealed class UserStore
         username = (username ?? "").Trim();
         if (username.Length < 2) return "Username must be at least 2 characters.";
         if ((password ?? "").Length < MinPasswordLength) return $"Password must be at least {MinPasswordLength} characters.";
-        if (!Roles.IsValid(role)) return "Role must be Admin or Planner.";
+        if (!Roles.IsValid(role)) return "Role must be Admin, Planner or Buyer.";
         lock (_lock)
         {
             if (_users.Any(u => string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase)))

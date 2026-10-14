@@ -19,6 +19,8 @@ public sealed class MrpRun
     /// <summary>Everything dated in the plan horizon, for the Calendar screen.</summary>
     public List<CalendarEvent> Events { get; } = new();
 
+    /// <summary>A short name the planner gave the run, so runs started in the same minute are easy to tell apart.</summary>
+    public string? Name { get; set; }
     public string? Notes { get; set; }
     /// <summary>The wizard criteria this run used (JSON), so it can be audited and re-run.</summary>
     public string? CriteriaJson { get; set; }

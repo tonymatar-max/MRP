@@ -64,6 +64,11 @@ builder.Services.AddScoped<ISapPushLog>(sp =>
     sp.GetRequiredService<SettingsService>().Get().CobaltDb.IsConfigured
         ? new SqlSapPushLog(sp.GetRequiredService<CobaltMrpDbContext>())
         : sp.GetRequiredService<MemorySapPushLog>());
+builder.Services.AddSingleton<MemoryRunTemplateStore>();
+builder.Services.AddScoped<IRunTemplateStore>(sp =>
+    sp.GetRequiredService<SettingsService>().Get().CobaltDb.IsConfigured
+        ? new SqlRunTemplateStore(sp.GetRequiredService<CobaltMrpDbContext>())
+        : sp.GetRequiredService<MemoryRunTemplateStore>());
 builder.Services.AddScoped<RunPlanner>();
 builder.Services.AddSingleton<ReleaseService>();
 builder.Services.AddSingleton<ExceptionExecutor>();
@@ -99,7 +104,8 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         o.Events.OnRedirectToAccessDenied = ctx => { ctx.Response.StatusCode = 403; return Task.CompletedTask; };
     });
 builder.Services.AddAuthorizationBuilder()
-    .AddPolicy("Admin", p => p.RequireRole(Roles.Admin));
+    .AddPolicy("Admin", p => p.RequireRole(Roles.Admin))
+    .AddPolicy("Release", p => p.RequireRole(Roles.Admin, Roles.Buyer));
 
 if (builder.Environment.IsDevelopment())
 {

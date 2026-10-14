@@ -12,6 +12,7 @@ export class MockHttpError extends Error {
 const users: { username: string; role: Role; password: string }[] = [
   { username: 'admin', role: 'Admin', password: 'admin-mock' },
   { username: 'planner', role: 'Planner', password: 'planner-mock' },
+  { username: 'buyer', role: 'Buyer', password: 'buyer-mock' },
 ];
 let current: AuthUser | null = { username: 'admin', role: 'Admin' };
 let storage: 'sql' | 'memory' = 'memory';

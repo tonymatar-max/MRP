@@ -20,6 +20,7 @@ export interface MrpRun {
   horizonStart: string; // ISO date
   horizonEnd: string; // ISO date
   bucketDays: number;
+  name?: string | null;
   notes?: string;
   plannedOrderCount: number;
   exceptionCount: number;
@@ -143,6 +144,8 @@ export interface TriggerRunRequest {
   bucketDays?: number;
   source?: DataSource;
   notes?: string;
+  /** A short name so runs started in the same minute are easy to tell apart. */
+  name?: string;
 }
 
 export interface ReleaseRequest {
@@ -161,7 +164,7 @@ export interface ReleaseResult {
 }
 
 // ---------- Auth / users ----------
-export type Role = 'Admin' | 'Planner';
+export type Role = 'Admin' | 'Planner' | 'Buyer';
 
 export interface AuthUser {
   username: string;
@@ -457,3 +460,6 @@ export interface PushPreview { ready: boolean; notReadyReason: string | null; it
 export interface PushRequestItem { itemCode: string; fields: { field: string; expectedSap: string | null; value: string }[] }
 export interface PushItemResult { itemCode: string; success: boolean; message: string; pushed: string[] }
 export interface PushExecuteResult { pushed: number; failed: number; items: PushItemResult[] }
+
+// ----- saved Run MRP option sets -----
+export interface RunTemplate { id: string; name: string; createdBy: string; updatedAt: string; criteria: RunCriteria }

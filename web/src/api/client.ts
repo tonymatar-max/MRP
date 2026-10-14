@@ -17,10 +17,11 @@ import type {
 import * as mock from '../mocks/data';
 import * as adm from '../mocks/admin';
 import * as msl from '../mocks/saplog';
+import * as mtp from '../mocks/templates';
 import * as md from '../mocks/masterdata';
 import * as mex from '../mocks/exceptions';
 import * as mpd from '../mocks/previewDetails';
-import type { ExecutePayload, ExecutePreview, ExecuteRequest, ExecuteResult, SapLogEntry, SapLogQuery, SupplierImportResponse, SupplierImportRow, PushPreview, PushRequestItem, PushExecuteResult } from './types';
+import type { ExecutePayload, ExecutePreview, ExecuteRequest, ExecuteResult, SapLogEntry, SapLogQuery, SupplierImportResponse, SupplierImportRow, PushPreview, PushRequestItem, PushExecuteResult, RunTemplate } from './types';
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string) || '/api';
 export const USE_MOCK =
@@ -154,6 +155,22 @@ export const api = {
   async listMasterSuppliers(q: MasterSupplierQuery): Promise<MasterSupplierPage> {
     if (USE_MOCK) return mocked(() => md.listSuppliers(q), 250);
     return http<MasterSupplierPage>(`/masterdata/suppliers?${qs({ ...q } as Record<string, string | number | undefined>)}`);
+  },
+  async listRunTemplates(): Promise<RunTemplate[]> {
+    if (USE_MOCK) return mocked(() => mtp.listTemplates(), 200);
+    return http<RunTemplate[]>('/run-templates');
+  },
+  async saveRunTemplate(name: string, criteria: RunCriteria): Promise<RunTemplate> {
+    if (USE_MOCK) return mocked(() => mtp.saveTemplate(name, criteria), 250);
+    return post<RunTemplate>('/run-templates', { name, criteria });
+  },
+  async updateRunTemplate(id: string, body: { name?: string; criteria?: RunCriteria }): Promise<RunTemplate> {
+    if (USE_MOCK) return mocked(() => mtp.updateTemplate(id, body), 250);
+    return put<RunTemplate>(`/run-templates/${encodeURIComponent(id)}`, body);
+  },
+  async deleteRunTemplate(id: string): Promise<void> {
+    if (USE_MOCK) return mocked(() => mtp.deleteTemplate(id), 200);
+    await http<void>(`/run-templates/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
   async previewPushToSap(itemCodes: string[]): Promise<PushPreview> {
     if (USE_MOCK) return mocked(() => md.previewPush(itemCodes), 400);

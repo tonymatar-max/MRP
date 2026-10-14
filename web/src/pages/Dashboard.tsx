@@ -48,7 +48,7 @@ export default function Dashboard() {
         {d && (
           <>
             <div className="muted" style={{ marginBottom: 12 }}>
-              {d.id} · {tr('horizon')} {fmtDate(d.horizonStart)} → {fmtDate(d.horizonEnd)} · {tr('{n}-day buckets', { n: d.bucketDays })} · {tr('by {user}', { user: d.runBy })}
+              {d.name ? <><strong>{d.name}</strong> · </> : null}{d.id} · {tr('horizon')} {fmtDate(d.horizonStart)} → {fmtDate(d.horizonEnd)} · {tr('{n}-day buckets', { n: d.bucketDays })} · {tr('by {user}', { user: d.runBy })}
             </div>
             <SummaryCard s={summary} />
             <CriteriaPanel criteria={d.criteria} onRerun={(c) => setWizard({ initial: c })} />

@@ -10,6 +10,7 @@ import { ReviewStep } from './ReviewStep';
 import { RulesStep } from './RulesStep';
 import { ScopeStep } from './ScopeStep';
 import { SupplyStep } from './SupplyStep';
+import { TemplateBar } from './TemplateBar';
 
 const STEPS = ['Scope', 'Demand', 'Supply and lead times', 'Planning rules', 'Review'];
 
@@ -56,6 +57,7 @@ export function RunWizard({ onClose, initial, onQuick }: { onClose: () => void; 
   const [step, setStep] = useState(0);
   const [errors, setErrors] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
+  const [runName, setRunName] = useState('');
   const [resetting, setResetting] = useState(false);
   const [resetKey, setResetKey] = useState(0); // remounts steps that keep local text state
   const whList = useQuery({ queryKey: ['warehouses', c?.source], queryFn: () => api.getWarehouses(c!.source), enabled: !!c });
@@ -89,14 +91,14 @@ export function RunWizard({ onClose, initial, onQuick }: { onClose: () => void; 
   const reset = async () => {
     if (!c) return;
     setResetting(true);
-    try { setC(withPlanningDefaults(await api.runDefaults(c.source))); setNotes(''); setErrors([]); setResetKey((k) => k + 1); }
+    try { setC(withPlanningDefaults(await api.runDefaults(c.source))); setNotes(''); setRunName(''); setErrors([]); setResetKey((k) => k + 1); }
     catch (e) { setErrors([(e as Error).message]); }
     finally { setResetting(false); }
   };
   const run = () => {
     if (!c) return;
     for (let s = 0; s < 4; s++) { const err = validateStep(s, c, allWh); if (err.length) { setStep(s); setErrors(err); return; } }
-    trigger.mutate({ criteria: c, notes: notes.trim() || undefined }, {
+    trigger.mutate({ criteria: c, notes: notes.trim() || undefined, name: runName.trim() || undefined }, {
       onSuccess: (r) => { setRunId(r.id); onClose(); navigate('/'); },
     });
   };
@@ -113,6 +115,7 @@ export function RunWizard({ onClose, initial, onQuick }: { onClose: () => void; 
             <button type="button" className="btn ghost sm" onClick={reset} disabled={!c || resetting || trigger.isPending}>{resetting ? 'Resetting…' : 'Reset to defaults'}</button>
             <button type="button" className="btn sm" onClick={onClose} disabled={trigger.isPending} aria-label="Close wizard">Close</button>
           </div>
+          <TemplateBar c={c} disabled={trigger.isPending} onApply={(tc, nm) => { setC(withPlanningDefaults(tc)); setErrors([]); setStep(0); setResetKey((k) => k + 1); if (!runName) setRunName(nm); }} />
           <ol className="steps" aria-label="Progress">
             {STEPS.map((s, i) => (
               <li key={s} className={i === step ? 'current' : i < step ? 'done' : ''} aria-current={i === step ? 'step' : undefined}>
@@ -135,7 +138,7 @@ export function RunWizard({ onClose, initial, onQuick }: { onClose: () => void; 
                 {step === 1 && <DemandStep c={c} set={set} />}
                 {step === 2 && <SupplyStep c={c} set={set} />}
                 {step === 3 && <RulesStep c={c} set={set} />}
-                {step === 4 && <ReviewStep c={c} notes={notes} onNotes={setNotes} />}
+                {step === 4 && <ReviewStep c={c} notes={notes} onNotes={setNotes} name={runName} onName={setRunName} />}
               </div>
               {trigger.isError && <div className="alert danger" role="alert">{(trigger.error as Error).message}</div>}
             </>

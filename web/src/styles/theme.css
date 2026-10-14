@@ -435,3 +435,9 @@ th .th-btn:focus-visible, table.data tr[tabindex]:focus-visible { outline: 2px s
 tr.group-end td { border-bottom: 2px solid var(--line-strong); }
 tr.group-end td:first-child { box-shadow: inset 3px 0 0 var(--accent-line); }
 [dir="rtl"] tr.group-end td:first-child { box-shadow: inset -3px 0 0 var(--accent-line); }
+
+/* Run MRP wizard: saved templates */
+.tpl-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 0 4px; }
+.tpl-bar select { max-width: 260px; }
+.tpl-save { display: inline-flex; gap: 6px; align-items: center; }
+.tpl-save input { width: 200px; }

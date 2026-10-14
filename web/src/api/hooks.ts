@@ -264,3 +264,25 @@ export function usePushToSap() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['md-items'] }); qc.invalidateQueries({ queryKey: ['md-suppliers'] }); qc.invalidateQueries({ queryKey: ['sap-log'] }); },
   });
 }
+
+export function useRunTemplates() {
+  return useQuery({ queryKey: ['run-templates'], queryFn: api.listRunTemplates, staleTime: 10_000 });
+}
+export function useSaveRunTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { name: string; criteria: RunCriteria }) => api.saveRunTemplate(v.name, v.criteria),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['run-templates'] }),
+  });
+}
+export function useUpdateRunTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; body: { name?: string; criteria?: RunCriteria } }) => api.updateRunTemplate(v.id, v.body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['run-templates'] }),
+  });
+}
+export function useDeleteRunTemplate() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (id: string) => api.deleteRunTemplate(id), onSuccess: () => qc.invalidateQueries({ queryKey: ['run-templates'] }) });
+}

@@ -533,7 +533,7 @@ function UsersTab() {
 
   return (
     <>
-      <SectionCard title="Users" badge={<span className="muted">Admin: settings, users, release to SAP B1. Planner: run MRP, view, edit forecasts.</span>}>
+      <SectionCard title="Users" badge={<span className="muted">Admin: settings, users, release anything to SAP B1, Execute. Buyer: a planner who can also release purchase orders and requests. Planner: run MRP, view, edit forecasts.</span>}>
         {notice && <div className={`alert ${notice.ok ? 'ok' : 'danger'}`} role="status">{notice.text}</div>}
         {users.isLoading && <Loading />}
         {users.isError && <ErrorState error={users.error} />}
@@ -573,7 +573,7 @@ function UsersTab() {
               <input id="nu-pass" type="password" required minLength={8} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
               <span className="hint">Minimum 8 characters.</span></div>
             <div className="field"><label htmlFor="nu-role">Role</label>
-              <select id="nu-role" value={role} onChange={(e) => setRole(e.target.value as Role)}><option>Planner</option><option>Admin</option></select></div>
+              <select id="nu-role" value={role} onChange={(e) => setRole(e.target.value as Role)}><option>Planner</option><option>Buyer</option><option>Admin</option></select></div>
           </div>
           <div style={{ marginTop: 14 }}><button type="submit" className="btn primary" disabled={create.isPending}>{create.isPending ? 'Adding…' : 'Add user'}</button></div>
         </form>
