@@ -341,8 +341,8 @@ function AutomationSection({ schedule, notifications, onSchedule, onNotification
             <span className="hint">The email links to this address followed by /exceptions.</span></div>
         </div>
         <div className="field"><label htmlFor="ntf-to">Recipients</label>
-          <textarea id="ntf-to" rows={2} value={notifications.recipients} placeholder="buyer@yourcompany.com, planner@yourcompany.com" onChange={(e) => setN('recipients', e.target.value)} />
-          <span className="hint">Separate addresses with commas, semicolons or new lines.</span></div>
+          <textarea id="ntf-to" rows={3} value={notifications.recipients} placeholder={'planner@yourcompany.com\nbuyer@yourcompany.com: purchasing\nplantmanager@yourcompany.com: production+capacity'} onChange={(e) => setN('recipients', e.target.value)} />
+          <span className="hint">Separate addresses with commas or new lines. An address alone gets every new exception; add ": purchasing", ": production", ": capacity" or ": general" to send that person only that area (join several with +). Purchasing = purchase orders, requests and transfers; production = work orders; capacity = work-center overloads; general = the rest, such as past-due demand.</span></div>
         <div className="field"><label htmlFor="ntf-when">Send for</label>
           <select id="ntf-when" value={notifications.notifyOn} onChange={(e) => setN('notifyOn', e.target.value as NotificationSettings['notifyOn'])}>
             <option value="ScheduledRuns">Scheduled runs only (recommended)</option>

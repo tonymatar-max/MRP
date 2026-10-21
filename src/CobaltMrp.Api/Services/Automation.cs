@@ -132,9 +132,23 @@ public sealed class ExceptionNotifier(SettingsService settings, IEmailSender sen
             if (previous is null) return Record(false, 0, "This is the first run: nothing to compare with.");
             if (fresh.Count == 0) return Record(false, 0, "No new exceptions: no email sent.");
 
-            var msg = Build(run, fresh, n.PublicUrl, previous) with { To = n.RecipientList() };
-            await sender.SendAsync(n, msg, ct);
-            return Record(true, fresh.Count, $"Emailed {fresh.Count} new exception(s) to {n.RecipientList().Count} recipient(s).");
+            // Each recipient gets only the areas they asked for; people with the same selection share one email.
+            var types = run.PlannedOrders.ToDictionary(p => p.Id, p => p.Type);
+            var areaOf = fresh.ToDictionary(e => e.ExceptionId, e => ExceptionAreas.Of(e, types));
+            var groups = n.RecipientRules()
+                .Select(r => (Rule: r, Items: r.Areas is null ? fresh : fresh.Where(e => r.Areas.Contains(areaOf[e.ExceptionId])).ToList()))
+                .Where(x => x.Items.Count > 0)
+                .GroupBy(x => string.Join(",", x.Items.Select(e => e.ExceptionId)));
+            int emails = 0, people = 0;
+            foreach (var g in groups)
+            {
+                var items = g.First().Items;
+                var to = g.Select(x => x.Rule.Address).ToList();
+                await sender.SendAsync(n, Build(run, items, n.PublicUrl, previous) with { To = to }, ct);
+                emails++; people += to.Count;
+            }
+            if (emails == 0) return Record(false, fresh.Count, $"{fresh.Count} new exception(s), but none match any recipient's areas: no email sent.");
+            return Record(true, fresh.Count, $"Emailed new exceptions to {people} recipient(s).");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex)

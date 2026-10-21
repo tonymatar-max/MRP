@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using CobaltMrp.Domain;
 using Microsoft.Data.SqlClient;
 
 namespace CobaltMrp.Api.Settings;
@@ -220,11 +221,62 @@ public sealed class NotificationSettings
     [JsonIgnore]
     public bool IsConfigured => Enabled && !string.IsNullOrWhiteSpace(SmtpHost) && !string.IsNullOrWhiteSpace(From) && RecipientList().Count > 0;
 
-    public List<string> RecipientList() => (Recipients ?? "")
-        .Split(new[] { ',', ';', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-        .Where(x => x.Contains('@')).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    public List<string> RecipientList() => RecipientRules().Select(r => r.Address).ToList();
+
+    /// <summary>
+    /// One rule per address. "buyer@x.com" gets every exception; "buyer@x.com: purchasing" only that area; several areas are
+    /// joined with "+" ("pm@x.com: production+capacity"). Areas: purchasing, production, capacity, general. A repeated
+    /// address merges its areas; an unknown area word is ignored (and if none is left the address gets everything).
+    /// </summary>
+    public List<RecipientRule> RecipientRules()
+    {
+        var map = new Dictionary<string, RecipientRule>(StringComparer.OrdinalIgnoreCase);
+        foreach (var raw in (Recipients ?? "").Split(new[] { ',', ';', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var colon = raw.IndexOf(':');
+            var address = (colon < 0 ? raw : raw[..colon]).Trim();
+            if (!address.Contains('@')) continue;
+            HashSet<string>? areas = null;
+            if (colon >= 0)
+            {
+                var parsed = raw[(colon + 1)..].Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Select(a => a.ToLowerInvariant()).Where(a => ExceptionAreas.All.Contains(a)).ToHashSet();
+                if (parsed.Count > 0 && !parsed.SetEquals(ExceptionAreas.All)) areas = parsed;
+            }
+            if (!map.TryGetValue(address, out var existing)) map[address] = new RecipientRule(address, areas);
+            else if (existing.Areas is not null)
+                map[address] = existing with { Areas = areas is null ? null : existing.Areas.Union(areas).ToHashSet() };
+        }
+        return map.Values.ToList();
+    }
+
+    /// <summary>The text form of the rules, the way it is stored.</summary>
+    public string NormalisedRecipients() => string.Join(", ", RecipientRules().Select(r => r.Areas is null ? r.Address : r.Address + ": " + string.Join("+", ExceptionAreas.All.Where(r.Areas.Contains))));
 
     public NotificationSettings Clone() => (NotificationSettings)MemberwiseClone();
+}
+
+/// <summary>An alert recipient; Areas null = every exception.</summary>
+public sealed record RecipientRule(string Address, HashSet<string>? Areas);
+
+public static class ExceptionAreas
+{
+    public const string Purchasing = "purchasing", Production = "production", Capacity = "capacity", General = "general";
+    public static readonly string[] All = { Purchasing, Production, Capacity, General };
+
+    /// <summary>Capacity overloads are capacity; exceptions about (or planned as) work orders are production; those about
+    /// purchase orders/requests and transfers are purchasing; the rest (e.g. past due demand) is general.</summary>
+    public static string Of(ExceptionMessage e, IReadOnlyDictionary<Guid, PlannedOrderType> plannedTypes)
+    {
+        if (e.Type == ExceptionType.CapacityOverload) return Capacity;
+        var doc = e.SourceDocKey ?? "";
+        if (doc.StartsWith("OWOR", StringComparison.OrdinalIgnoreCase)) return Production;
+        if (doc.StartsWith("OPOR", StringComparison.OrdinalIgnoreCase) || doc.StartsWith("OPRQ", StringComparison.OrdinalIgnoreCase)
+            || doc.StartsWith("OWTQ", StringComparison.OrdinalIgnoreCase)) return Purchasing;
+        if (e.PlannedOrderId is { } id && plannedTypes.TryGetValue(id, out var t))
+            return t == PlannedOrderType.ProductionOrder ? Production : Purchasing;
+        return General;
+    }
 }
 
 /// <summary>Run MRP by itself at a fixed time of day (the server's local time). OFF by default.</summary>

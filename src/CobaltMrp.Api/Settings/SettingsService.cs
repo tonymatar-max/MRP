@@ -83,7 +83,7 @@ public sealed class SettingsService
         m.Notifications.SmtpHost = (m.Notifications.SmtpHost ?? "").Trim();
         m.Notifications.UserName = (m.Notifications.UserName ?? "").Trim();
         m.Notifications.From = (m.Notifications.From ?? "").Trim();
-        m.Notifications.Recipients = string.Join(", ", m.Notifications.RecipientList());
+        m.Notifications.Recipients = m.Notifications.NormalisedRecipients();
         m.Notifications.SmtpPort = m.Notifications.SmtpPort is < 1 or > 65535 ? 587 : m.Notifications.SmtpPort;
         if (m.Notifications.NotifyOn is not ("ScheduledRuns" or "AllRuns")) m.Notifications.NotifyOn = "ScheduledRuns";
         var url = (m.Notifications.PublicUrl ?? "").Trim().TrimEnd('/');

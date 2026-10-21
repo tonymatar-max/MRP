@@ -96,6 +96,45 @@ public class AutomationTests : IDisposable
     }
 
     [Fact]
+    public async Task Recipients_GetOnlyTheirAreas_AndSharedSelectionsShareOneEmail()
+    {
+        var (n, sender, _, store) = await Make(Settings(a => a.Notifications.Recipients =
+            "all@test.local, buyer@test.local: purchasing; buyer2@test.local: Purchasing; pm@test.local: production+capacity; nobody@test.local: general"));
+        await store.AddAsync(Run(DateTimeOffset.UtcNow.AddDays(-1), null), default);
+        var now = Run(DateTimeOffset.UtcNow, null,
+            Ex("PO1", ExceptionType.Expedite, doc: "OPOR:1"), Ex("WO1", ExceptionType.Cancel, doc: "OWOR:2"),
+            Ex("CAP", ExceptionType.CapacityOverload), Ex("TR1", ExceptionType.Expedite, doc: "OWTQ:3"));
+        await store.AddAsync(now, default);
+
+        var r = await n.NotifyAsync(now, true, default);
+
+        Assert.True(r.Sent); Assert.Equal(4, r.NewExceptions);
+        string[] To(EmailMessage m) => m.To.OrderBy(x => x).ToArray();
+        var all = sender.Sent.Select(s => s.Message).ToList();
+        Assert.Equal(3, all.Count);                                                       // everything, purchasing, production+capacity (general matched nothing)
+        var everyone = Assert.Single(all, m => To(m).Contains("all@test.local"));
+        Assert.Contains("PO1", everyone.Text); Assert.Contains("WO1", everyone.Text); Assert.Contains("CAP", everyone.Text);
+        var buyers = Assert.Single(all, m => To(m).Contains("buyer@test.local"));
+        Assert.Equal(new[] { "buyer@test.local", "buyer2@test.local" }, To(buyers));       // same selection: one email
+        Assert.Contains("PO1", buyers.Text); Assert.Contains("TR1", buyers.Text);
+        Assert.DoesNotContain("WO1", buyers.Text); Assert.DoesNotContain("CAP", buyers.Text);
+        var pm = Assert.Single(all, m => To(m).Contains("pm@test.local"));
+        Assert.Contains("WO1", pm.Text); Assert.Contains("CAP", pm.Text); Assert.DoesNotContain("PO1", pm.Text);
+        Assert.DoesNotContain(all, m => To(m).Contains("nobody@test.local"));
+    }
+
+    [Fact]
+    public void RecipientRules_ParseAndNormalise()
+    {
+        var n = new NotificationSettings { Recipients = "a@x.com: purchasing+capacity, A@x.com: production, b@x.com: bogus, c@x.com: purchasing+production+capacity+general, junk" };
+        var rules = n.RecipientRules();
+        Assert.Equal(3, rules.Count);                                                      // a (merged), b (unknown area = everything), c (all areas = everything)
+        Assert.Equal(new[] { "capacity", "production", "purchasing" }, rules[0].Areas!.OrderBy(x => x).ToArray());
+        Assert.Null(rules[1].Areas); Assert.Null(rules[2].Areas);
+        Assert.Equal("a@x.com: purchasing+production+capacity, b@x.com, c@x.com", n.NormalisedRecipients());
+    }
+
+    [Fact]
     public async Task NoNewExceptions_NoEmail_AndDoneOnesDoNotCount()
     {
         var (n, sender, _, store) = await Make(Settings());
