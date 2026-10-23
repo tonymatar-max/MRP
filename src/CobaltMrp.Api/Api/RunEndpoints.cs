@@ -31,6 +31,7 @@ public static class RunEndpoints
         api.MapMasterData();
         api.MapRunTemplates();
         api.MapAutomation();
+        api.MapSchedules();
 
         api.MapGet("/status", (SettingsService settings, IRunStore store, IConfiguration cfg) =>
         {

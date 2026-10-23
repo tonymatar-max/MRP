@@ -88,13 +88,7 @@ public sealed class SettingsService
         if (m.Notifications.NotifyOn is not ("ScheduledRuns" or "AllRuns")) m.Notifications.NotifyOn = "ScheduledRuns";
         var url = (m.Notifications.PublicUrl ?? "").Trim().TrimEnd('/');
         m.Notifications.PublicUrl = Uri.TryCreate(url, UriKind.Absolute, out var u) && (u.Scheme is "http" or "https") ? url : "";
-        m.Schedule ??= new ScheduleSettings();
-        m.Schedule.Time = TimeOnly.TryParseExact((m.Schedule.Time ?? "").Trim(), "HH:mm", null, System.Globalization.DateTimeStyles.None, out var at) ? at.ToString("HH:mm") : "02:00";
-        m.Schedule.Days = (m.Schedule.Days ?? new())
-            .Select(d => ScheduleSettings.AllDays.FirstOrDefault(x => d != null && d.StartsWith(x, StringComparison.OrdinalIgnoreCase)))
-            .Where(d => d != null).Select(d => d!).Distinct().ToList();
-        if (m.Schedule.Enabled && m.Schedule.Days.Count == 0) m.Schedule.Days = new(ScheduleSettings.AllDays);
-        m.Schedule.TemplateId = (m.Schedule.TemplateId ?? "").Trim();
+        NormaliseSchedules(m, stored);
         m.Ai ??= new AiSettings();
         m.Ai.ApiKey = string.IsNullOrWhiteSpace(m.Ai.ApiKey) ? stored.Ai.ApiKey : m.Ai.ApiKey.Trim();
         // One or more model ids, comma or newline separated: the first is the primary, the rest are fallbacks.
@@ -147,6 +141,38 @@ public sealed class SettingsService
         return m;
     }
 
+    /// <summary>
+    /// Brings the schedule list into shape: an old single <c>Schedule</c> becomes one list entry (once: the old field is then
+    /// cleared), ids are unique, times and days are valid. Invalid input is refused earlier by <see cref="ScheduleSettings.Validate"/>;
+    /// here it is only repaired (so a hand-edited file cannot break the ticker).
+    /// </summary>
+    internal static void NormaliseSchedules(AppSettings m, AppSettings? stored)
+    {
+        List<ScheduleSettings> list;
+        if (m.Schedules is not null) list = m.Schedules;
+        else if (m.Schedule is { IsCustomised: true } legacy && stored?.Schedules is not { Count: > 0 }) { legacy.Id = ScheduleSettings.MigratedId; list = new() { legacy }; }
+        else list = stored?.Schedules?.Select(x => x.Clone()).ToList() ?? new();
+        m.Schedule = null;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<ScheduleSettings>();
+        foreach (var raw in list.Where(x => x is not null).Take(ScheduleSettings.MaxSchedules))
+        {
+            var id = (raw.Id ?? "").Trim();
+            if (id.Length == 0 || id.Length > 40 || !seen.Add(id)) { id = Guid.NewGuid().ToString(); seen.Add(id); }
+            var days = (raw.Days ?? new()).Select(ScheduleSettings.DayOf).Where(d => d != null).Select(d => d!).Distinct().ToList();
+            if (raw.Enabled && days.Count == 0) days = new(ScheduleSettings.AllDays);
+            var name = (raw.Name ?? "").Trim();
+            result.Add(new ScheduleSettings
+            {
+                Id = id, Name = name.Length > 60 ? name[..60] : name, Enabled = raw.Enabled, TemplateId = (raw.TemplateId ?? "").Trim(),
+                Time = TimeOnly.TryParseExact((raw.Time ?? "").Trim(), "HH:mm", null, System.Globalization.DateTimeStyles.None, out var at) ? at.ToString("HH:mm") : "02:00",
+                Days = days,
+            });
+        }
+        m.Schedules = result;
+    }
+
     private AppSettings Load()
     {
         if (!File.Exists(_path)) return new AppSettings();
@@ -160,9 +186,15 @@ public sealed class SettingsService
             s.Ai.ApiKey = _secrets.Unprotect(s.Ai.ApiKey);
             s.Notifications ??= new NotificationSettings();
             s.Notifications.Password = _secrets.Unprotect(s.Notifications.Password);
-            s.Schedule ??= new ScheduleSettings();
+            var rewrite = s.Schedules is null || s.Schedule is not null;       // an older file: migrate the single schedule once, then save
+            NormaliseSchedules(s, null);
             s.CobaltDb.ConnectionStringOverride = _secrets.Unprotect(s.CobaltDb.ConnectionStringOverride);
             s.B1Db.ConnectionStringOverride = _secrets.Unprotect(s.B1Db.ConnectionStringOverride);
+            if (rewrite)
+            {
+                try { Write(s); _log.LogInformation("Settings: the single schedule was moved into the schedule list."); }
+                catch (Exception ex) { _log.LogWarning(ex, "Could not save the migrated schedule list; it will be migrated again on the next start."); }
+            }
             return s;
         }
         catch (Exception ex)

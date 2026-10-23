@@ -89,6 +89,8 @@ export function useSaveSettings() {
       qc.setQueryData(['settings'], data);
       qc.invalidateQueries({ queryKey: ['status'] });
       qc.invalidateQueries({ queryKey: ['ai-status'] });
+      qc.invalidateQueries({ queryKey: ['schedules'] });
+      qc.invalidateQueries({ queryKey: ['run-templates'] });
     },
   });
 }
@@ -287,6 +289,9 @@ export function useDeleteRunTemplate() {
   return useMutation({ mutationFn: (id: string) => api.deleteRunTemplate(id), onSuccess: () => qc.invalidateQueries({ queryKey: ['run-templates'] }) });
 }
 
+export function useSchedules(enabled = true) {
+  return useQuery({ queryKey: ['schedules'], queryFn: api.schedules, enabled, staleTime: 0, refetchInterval: 30_000 });
+}
 export function useAutomationStatus(enabled = true) {
   return useQuery({ queryKey: ['automation'], queryFn: api.automationStatus, enabled, staleTime: 0, refetchInterval: 30_000 });
 }

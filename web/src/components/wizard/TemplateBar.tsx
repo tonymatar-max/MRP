@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { scheduledBadge } from '../../api/schedule';
+import { useAuth } from '../Auth';
 import { useDeleteRunTemplate, useRunTemplates, useSaveRunTemplate, useUpdateRunTemplate } from '../../api/hooks';
 import type { RunCriteria } from '../../api/types';
 import { useT } from '../../i18n';
@@ -9,6 +12,8 @@ import { useT } from '../../i18n';
  */
 export function TemplateBar({ c, onApply, disabled }: { c: RunCriteria | null; onApply: (c: RunCriteria, name: string) => void; disabled?: boolean }) {
   const tr = useT();
+  const nav = useNavigate();
+  const { isAdmin } = useAuth();
   const list = useRunTemplates().data ?? [];
   const save = useSaveRunTemplate();
   const update = useUpdateRunTemplate();
@@ -19,6 +24,7 @@ export function TemplateBar({ c, onApply, disabled }: { c: RunCriteria | null; o
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const picked = list.find((t) => t.id === pick);
+  const badge = picked ? scheduledBadge(picked) : null;
   const same = list.find((t) => t.name.toLowerCase() === name.trim().toLowerCase());
   const busy = save.isPending || update.isPending || del.isPending;
   const fail = (e: unknown) => setMsg({ ok: false, text: (e as Error).message });
@@ -38,11 +44,17 @@ export function TemplateBar({ c, onApply, disabled }: { c: RunCriteria | null; o
       <label htmlFor="wz-tpl" className="muted">{tr('Template')}</label>
       <select id="wz-tpl" value={pick} onChange={(e) => { setPick(e.target.value); setMsg(null); }} disabled={disabled || busy}>
         <option value="">{list.length ? tr('Choose a saved template…') : tr('No saved templates yet')}</option>
-        {list.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+        {list.map((t) => <option key={t.id} value={t.id}>{scheduledBadge(t) ? `${t.name} (${tr('scheduled')})` : t.name}</option>)}
       </select>
       <button type="button" className="btn sm" onClick={apply} disabled={!picked || disabled || busy}>{tr('Apply')}</button>
       {picked && <button type="button" className="btn sm" onClick={doUpdate} disabled={!c || disabled || busy} title={tr('Replace this template with the options currently chosen')}>{tr('Update')}</button>}
       {picked && <button type="button" className="btn sm" onClick={doDelete} disabled={disabled || busy}>{tr('Delete')}</button>}
+      {badge && <span className="pill info tpl-sched" data-testid="tpl-scheduled" title={tr('This template runs by itself on a schedule (Settings > Automation)')}>{tr('Scheduled')}: {badge}</span>}
+      {picked && isAdmin && (
+        <button type="button" className="btn sm" data-testid="tpl-schedule" disabled={disabled || busy}
+          onClick={() => nav(`/settings?tab=automation&schedule=${encodeURIComponent(picked.id)}`)}
+          title={tr('Open Settings > Automation to schedule this template')}>{badge ? tr('Schedules…') : tr('Schedule…')}</button>
+      )}
       <span className="spacer" />
       {!saving
         ? <button type="button" className="btn sm" onClick={() => { setSaving(true); setMsg(null); }} disabled={!c || disabled || busy}>{tr('Save as template…')}</button>

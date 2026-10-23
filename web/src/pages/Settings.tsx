@@ -1,14 +1,15 @@
-import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { Component, FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { API_BASE, USE_MOCK, api } from '../api/client';
 import {
-  useAutomationStatus, useCreateUser, useDeleteUser, useRunTemplates, useSaveSettings, useSetUserPassword, useSettings, useUsers,
+  useAutomationStatus, useSchedules, useCreateUser, useDeleteUser, useRunTemplates, useSaveSettings, useSetUserPassword, useSettings, useUsers,
 } from '../api/hooks';
 import type {
-  AiSettings, AppSettings, NotificationSettings, ScheduleSettings, DataSource, NonWorkingDate, ResourceInfo, Weekday, DbSettings, ItemVendor, OkResult, PlanningSettings, Role, ServiceLayerSettings,
+  AiSettings, AppSettings, NotificationSettings, ScheduleSettings, ScheduleView, DataSource, NonWorkingDate, ResourceInfo, Weekday, DbSettings, ItemVendor, OkResult, PlanningSettings, Role, ServiceLayerSettings,
 } from '../api/types';
 import { useAuth } from '../components/Auth';
 import { PriorityControl } from '../components/PriorityControl';
+import { normaliseSettings } from '../api/normalise';
 import { Dialog, ErrorState, Loading, PageHeader, Pill } from '../components/ui';
 
 type TabId = 'cobalt' | 'b1' | 'sl' | 'planning' | 'automation' | 'ai' | 'users';
@@ -21,6 +22,17 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'ai', label: 'AI' },
   { id: 'users', label: 'Users' },
 ];
+
+// ---------- a section that fails to render must not blank the whole page ----------
+class SectionBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  render() {
+    return this.state.error
+      ? <div className="alert danger" role="alert">This section could not be shown: {this.state.error.message}</div>
+      : this.props.children;
+  }
+}
 
 // ---------- shared bits ----------
 function ResultBox({ r }: { r: OkResult | null }) {
@@ -258,56 +270,113 @@ function ModelPicker({ value, models, onChange }: { value: string; models: strin
 // ---------- Automation: scheduled runs and new-exception emails ----------
 const fmtWhen = (iso?: string | null) => (iso ? new Date(iso).toLocaleString() : '—');
 
-function AutomationSection({ schedule, notifications, onSchedule, onNotifications }: {
-  schedule: ScheduleSettings; notifications: NotificationSettings;
-  onSchedule: (v: ScheduleSettings) => void; onNotifications: (v: NotificationSettings) => void;
+const MAX_SCHEDULES = 20;
+
+/** One scheduled run: template, time, days and what it did last. Saved status comes from the server, edits stay in the draft. */
+function ScheduleCard({ s, index, view, saved, templates, onChange, onRemove, onRun, running, result }: {
+  s: ScheduleSettings; index: number; view?: ScheduleView; saved: boolean;
+  templates: { id: string; name: string }[]; onChange: (v: ScheduleSettings) => void; onRemove: () => void;
+  onRun: () => void; running: boolean; result?: OkResult | null;
 }) {
-  const setS = <K extends keyof ScheduleSettings>(k: K, v: ScheduleSettings[K]) => onSchedule({ ...schedule, [k]: v });
+  const set = <K extends keyof ScheduleSettings>(k: K, v: ScheduleSettings[K]) => onChange({ ...s, [k]: v });
+  const toggleDay = (d: Weekday) => set('days', s.days.includes(d) ? s.days.filter((x) => x !== d) : [...s.days, d]);
+  const missing = !!s.templateId && !templates.some((t) => t.id === s.templateId);
+  const st = view?.status;
+  const key = `sch-${index}`;
+  const badTime = !/^([01]\d|2[0-3]):[0-5]\d$/.test(s.time);
+  return (
+    <div className="card settings-card sched-card" data-testid="schedule-card">
+      <div className="card-h">
+        <h3>{s.name.trim() || `Schedule ${index + 1}`}</h3>
+        <Pill tone={s.enabled ? 'info' : undefined}>{s.enabled ? 'On' : 'Off'}</Pill>
+        <span className="spacer" />
+        <button type="button" className="btn sm" onClick={onRemove} aria-label={`Remove schedule ${index + 1}`}>Remove</button>
+      </div>
+      <div className="card-b form-stack">
+        <Check id={`${key}-on`} label="Run this schedule" checked={s.enabled} onChange={(v) => set('enabled', v)} />
+        <div className="form-row">
+          <div className="field"><label htmlFor={`${key}-name`}>Name (optional)</label>
+            <input id={`${key}-name`} value={s.name} maxLength={60} placeholder="e.g. Nightly full plan" onChange={(e) => set('name', e.target.value)} /></div>
+          <div className="field"><label htmlFor={`${key}-tpl`}>Template</label>
+            <select id={`${key}-tpl`} value={s.templateId} aria-invalid={missing || (s.enabled && !s.templateId)} onChange={(e) => set('templateId', e.target.value)}>
+              <option value="">{s.enabled && !s.templateId && saved ? 'Settings defaults (older schedule: choose a template)' : 'Choose a saved template…'}</option>
+              {missing && <option value={s.templateId}>(template missing)</option>}
+              {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select></div>
+          <div className="field"><label htmlFor={`${key}-time`}>Time of day</label>
+            <input id={`${key}-time`} type="time" value={s.time} aria-invalid={badTime} onChange={(e) => set('time', e.target.value)} /></div>
+        </div>
+        {missing && <div className="alert danger" role="alert">This template was deleted. The schedule is skipped (status: failed) until you choose another template.</div>}
+        {!missing && s.enabled && !s.templateId && !saved && <div className="alert warn" role="alert">Choose a template: a schedule needs one to run.</div>}
+        <div role="group" aria-label={`Days for schedule ${index + 1}`}>
+          <div className="chips">
+            {DAYS.map((d) => <button key={d} type="button" className={`chip ${s.days.includes(d) ? 'on' : ''}`} aria-pressed={s.days.includes(d)} onClick={() => toggleDay(d)}>{d}</button>)}
+          </div>
+          {s.enabled && s.days.length === 0 && <span className="hint err">Choose at least one day.</span>}
+        </div>
+      </div>
+      <div className="card-f sched-status">
+        {saved && st ? (
+          <span className="grow" data-testid="schedule-status">
+            <strong>Next:</strong> {s.enabled && st.nextDueAt ? fmtWhen(st.nextDueAt) : 'not scheduled'}
+            {' · '}<strong>Last:</strong> {st.lastFiredAt ? <>{fmtWhen(st.lastFiredAt)} <Pill tone={st.lastOk ? 'ok' : 'danger'}>{st.lastOk ? 'OK' : 'Failed'}</Pill> <span className="muted">{st.lastMessage}</span></> : 'never'}
+          </span>
+        ) : <span className="hint grow">{saved ? 'Loading status…' : 'Save the settings to see its status and to use Run now.'}</span>}
+        <button type="button" className="btn" disabled={!saved || running || view?.running} onClick={onRun}
+          title={saved ? 'Runs MRP now with this schedule\'s saved template' : 'Save the settings first'}>{running || view?.running ? 'Running…' : 'Run now'}</button>
+      </div>
+      {result && <div className="card-f"><ResultBox r={result} /></div>}
+    </div>
+  );
+}
+
+function AutomationSection({ schedules, notifications, savedIds, onSchedules, onNotifications }: {
+  schedules: ScheduleSettings[]; notifications: NotificationSettings; savedIds: Set<string>;
+  onSchedules: (v: ScheduleSettings[]) => void; onNotifications: (v: NotificationSettings) => void;
+}) {
   const setN = <K extends keyof NotificationSettings>(k: K, v: NotificationSettings[K]) => onNotifications({ ...notifications, [k]: v });
-  const templates = useRunTemplates().data ?? [];
+  const templatesQ = useRunTemplates();
+  const templates = templatesQ.data ?? [];
+  const views = useSchedules();
   const status = useAutomationStatus();
   const probe = useProbe(() => api.testEmail(notifications));
-  const now = useProbe(async () => { const r = await api.runScheduledNow(); void status.refetch(); return { ok: r.ok, message: r.message }; });
-  const toggleDay = (d: Weekday) => setS('days', schedule.days.includes(d) ? schedule.days.filter((x) => x !== d) : [...schedule.days, d]);
+  const [runBusy, setRunBusy] = useState<string | null>(null);
+  const [runResult, setRunResult] = useState<Record<string, OkResult>>({});
   const st = status.data;
+  const viewOf = (id: string) => views.data?.find((v) => v.id === id);
+  const blank = (templateId = ''): ScheduleSettings => ({ id: '', name: '', enabled: false, time: '02:00', days: [...DAYS], templateId });
+  const runNow = async (id: string) => {
+    setRunBusy(id);
+    try { const r = await api.runScheduleNow(id); setRunResult((m) => ({ ...m, [id]: { ok: r.ok, message: r.message } })); }
+    catch (e) { setRunResult((m) => ({ ...m, [id]: { ok: false, message: (e as Error).message } })); }
+    finally { setRunBusy(null); void views.refetch(); }
+  };
   return (
     <>
-      <SectionCard
-        title="Scheduled run"
-        badge={<Pill tone={schedule.enabled ? 'info' : undefined}>{schedule.enabled ? 'On' : 'Off'}</Pill>}
-        actions={
-          <>
-            <button type="button" className="btn" disabled={now.busy} onClick={now.go}
-              title="Runs MRP exactly as the saved schedule would, right now (save the settings first)">{now.busy ? 'Running…' : 'Run now'}</button>
-            <span className="hint grow">Uses the saved settings. The run appears under Recent runs, started by "scheduler".</span>
-          </>
-        }
-      >
-        <Check id="sch-on" label="Run MRP automatically" checked={schedule.enabled} onChange={(v) => setS('enabled', v)}
-          hint="Off by default. The server's local time is used. A run missed because the service was stopped for more than 6 hours is skipped, never started at a surprising hour." />
-        <div className="form-row">
-          <div className="field"><label htmlFor="sch-time">Time of day</label>
-            <input id="sch-time" type="time" value={schedule.time} onChange={(e) => setS('time', e.target.value)} /></div>
-          <div className="field"><label htmlFor="sch-tpl">Options</label>
-            <select id="sch-tpl" value={schedule.templateId} onChange={(e) => setS('templateId', e.target.value)}>
-              <option value="">Settings defaults (Planning defaults tab)</option>
-              {templates.map((t) => <option key={t.id} value={t.id}>Template: {t.name}</option>)}
-            </select>
-            <span className="hint">Save a template in the Run MRP wizard to choose it here.</span></div>
+      <div className="sched-head">
+        <div>
+          <h3 className="sched-title">Scheduled runs</h3>
+          <p className="muted">Each schedule runs one saved Run MRP template at its own time on its own days (server local time). Runs are named "template name · date time" and started by "scheduler". Schedules run one at a time; a run missed because the service was stopped for more than 6 hours is skipped and recorded.</p>
         </div>
-        <div role="group" aria-label="Days">
-          <div className="chips">
-            {DAYS.map((d) => <button key={d} type="button" className={`chip ${schedule.days.includes(d) ? 'on' : ''}`} aria-pressed={schedule.days.includes(d)} onClick={() => toggleDay(d)}>{d}</button>)}
-          </div>
-        </div>
-        <ResultBox r={now.result} />
-        {st && (
-          <dl className="auto-status">
-            <div><dt>Next run</dt><dd>{schedule.enabled && st.schedule.nextRunAt ? fmtWhen(st.schedule.nextRunAt) : 'Not scheduled'}</dd></div>
-            <div><dt>Last run</dt><dd>{st.lastRun.at ? <>{fmtWhen(st.lastRun.at)} · {st.lastRun.ok ? 'OK' : 'Problem'}<div className="muted">{st.lastRun.message}</div></> : 'Never'}</dd></div>
-          </dl>
-        )}
-      </SectionCard>
+        <button type="button" className="btn primary" disabled={schedules.length >= MAX_SCHEDULES} onClick={() => onSchedules([...schedules, blank()])}
+          title={schedules.length >= MAX_SCHEDULES ? `At most ${MAX_SCHEDULES} schedules` : undefined}>Add schedule</button>
+      </div>
+      {views.isError && <div className="alert danger" role="alert">Could not load the schedule status: {(views.error as Error).message}</div>}
+      {templatesQ.isError && <div className="alert danger" role="alert">Could not load the saved templates: {(templatesQ.error as Error).message}</div>}
+      {schedules.length === 0 && (
+        <div className="card settings-card"><div className="card-b empty-note" data-testid="schedules-empty">
+          <strong>No scheduled runs yet.</strong>
+          <p className="muted">{templates.length === 0
+            ? 'Save your options as a template in the Run MRP wizard first, then add a schedule for it here.'
+            : 'Add a schedule to run MRP automatically with one of your saved templates.'}</p>
+        </div></div>
+      )}
+      {schedules.map((sc, i) => (
+        <ScheduleCard key={sc.id || `new-${i}`} s={sc} index={i} view={viewOf(sc.id)} saved={!!sc.id && savedIds.has(sc.id)} templates={templates}
+          onChange={(v) => onSchedules(schedules.map((x, j) => (j === i ? v : x)))}
+          onRemove={() => onSchedules(schedules.filter((_, j) => j !== i))}
+          onRun={() => void runNow(sc.id)} running={runBusy === sc.id} result={runResult[sc.id]} />
+      ))}
 
       <SectionCard
         title="New-exception emails"
@@ -349,7 +418,7 @@ function AutomationSection({ schedule, notifications, onSchedule, onNotification
             <option value="AllRuns">Every run, including ones started by hand</option>
           </select></div>
         <ResultBox r={probe.result} />
-        {st && st.lastNotice.at && (
+        {st?.lastNotice?.at && (
           <dl className="auto-status"><div><dt>Last email</dt><dd>{fmtWhen(st.lastNotice.at)} · {st.lastNotice.ok ? 'OK' : 'Problem'}<div className="muted">{st.lastNotice.message}</div></dd></div></dl>
         )}
       </SectionCard>
@@ -715,6 +784,17 @@ function SettingsEditor({ initial }: { initial: AppSettings }) {
   const timer = useRef<number>();
 
   const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(base), [draft, base]);
+  const savedIds = useMemo(() => new Set(base.schedules.map((x) => x.id)), [base]);
+  const forTemplate = params.get('schedule');
+  const added = useRef(false);
+  useEffect(() => {
+    if (!forTemplate || added.current) return;
+    added.current = true;
+    setTab('automation');
+    // a template that already has a schedule: just show it; otherwise start a new one for it
+    setDraft((d) => (d.schedules.some((x) => x.templateId === forTemplate) || d.schedules.length >= MAX_SCHEDULES ? d
+      : { ...d, schedules: [...d.schedules, { id: '', name: '', enabled: false, time: '02:00', days: [...DAYS], templateId: forTemplate }] }));
+  }, [forTemplate]);
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
   // Warn before closing the tab with unsaved changes.
@@ -737,13 +817,18 @@ function SettingsEditor({ initial }: { initial: AppSettings }) {
       flash(false, 'Planning defaults contain an empty number.'); setTab('planning'); return;
     }
     if (!Number.isFinite(draft.ai.maxTokens)) { flash(false, 'AI max tokens needs a number.'); setTab('ai'); return; }
-    if (draft.schedule.enabled && !/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.schedule.time)) { flash(false, 'Scheduled run: choose a time of day.'); setTab('automation'); return; }
-    if (draft.schedule.enabled && draft.schedule.days.length === 0) { flash(false, 'Scheduled run: choose at least one day.'); setTab('automation'); return; }
+    for (const [i, sc] of draft.schedules.entries()) {
+      const label = sc.name.trim() ? `Schedule "${sc.name.trim()}"` : `Schedule ${i + 1}`;
+      const fail = (m: string) => { flash(false, `${label}: ${m}`); setTab('automation'); };
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(sc.time)) { fail('choose a time of day (HH:mm).'); return; }
+      if (sc.enabled && sc.days.length === 0) { fail('choose at least one day.'); return; }
+      if (sc.enabled && !sc.templateId && !(sc.id && base.schedules.some((o) => o.id === sc.id && o.enabled && !o.templateId))) { fail('choose a template to run.'); return; }
+    }
     if (draft.notifications.enabled && (!draft.notifications.smtpHost.trim() || !draft.notifications.from.trim() || !draft.notifications.recipients.includes('@'))) { flash(false, 'Emails: enter the SMTP server, the From address and at least one recipient.'); setTab('automation'); return; }
     if (draft.notifications.enabled && !Number.isFinite(draft.notifications.smtpPort)) { flash(false, 'Emails: the port needs a number.'); setTab('automation'); return; }
     if (draft.planning.nonWorkingDates.some((d) => !d.date)) { flash(false, 'Every extra non-working date needs a date.'); setTab('planning'); return; }
     save.mutate(draft, {
-      onSuccess: (fresh) => { setDraft(fresh); setBase(fresh); flash(true, 'Settings saved.'); },
+      onSuccess: (raw) => { const fresh = normaliseSettings(raw); setDraft(fresh); setBase(fresh); flash(true, 'Settings saved.'); },
       onError: (e) => flash(false, `Save failed: ${(e as Error).message}`),
     });
   };
@@ -771,13 +856,16 @@ function SettingsEditor({ initial }: { initial: AppSettings }) {
           ))}
         </div>
         <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="tab-panel">
+          <SectionBoundary key={tab}>
           {tab === 'cobalt' && <DbSection id="cobalt" title="Cobalt MRP database" note="Where MRP runs and forecasts are stored." value={draft.cobaltDb} onChange={(v) => setDraft({ ...draft, cobaltDb: v })} test={api.testCobaltDb} extra />}
           {tab === 'b1' && <DbSection id="b1" title="SAP Business One database" note="Read-only access to the B1 company database." value={draft.b1Db} onChange={(v) => setDraft({ ...draft, b1Db: v })} test={api.testB1Db} />}
           {tab === 'sl' && <ServiceLayerSection value={draft.serviceLayer} onChange={(v) => setDraft({ ...draft, serviceLayer: v })} />}
           {tab === 'planning' && <PlanningSection value={draft.planning} onChange={(v) => setDraft({ ...draft, planning: v })} />}
-          {tab === 'automation' && <AutomationSection schedule={draft.schedule} notifications={draft.notifications} onSchedule={(v) => setDraft({ ...draft, schedule: v })} onNotifications={(v) => setDraft({ ...draft, notifications: v })} />}
+          {tab === 'automation' && <AutomationSection schedules={draft.schedules} notifications={draft.notifications} savedIds={savedIds} onSchedules={(v) => setDraft({ ...draft, schedules: v })} onNotifications={(v) => setDraft({ ...draft, notifications: v })} />}
           {tab === 'ai' && <AiSection value={draft.ai} onChange={(v) => setDraft({ ...draft, ai: v })} />}
           {tab === 'users' && <UsersTab />}
+
+          </SectionBoundary>
         </div>
         {tab !== 'users' && <p className="muted">Passwords are never sent back by the server and are not kept in this browser. Frontend: API base <span className="mono">{API_BASE}</span>, {USE_MOCK ? 'mock (offline) mode' : 'live API'}.</p>}
       </div>
@@ -792,5 +880,5 @@ export default function Settings() {
   if (!isAdmin) return <Navigate to="/" replace />;
   if (q.isLoading) return <><PageHeader crumb="Configuration" title="Settings" /><Loading /></>;
   if (q.isError || !q.data) return <><PageHeader crumb="Configuration" title="Settings" /><ErrorState error={q.error} /></>;
-  return <SettingsEditor initial={q.data} />;
+  return <SettingsEditor initial={normaliseSettings(q.data)} />;
 }

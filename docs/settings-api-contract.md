@@ -69,6 +69,26 @@ Roles: `Admin` (settings, users, release to B1) and `Planner` (run MRP, view, ed
 
 The test endpoints accept the **current, possibly unsaved** values of the relevant section as the body (the section object itself, e.g. the `cobaltDb` contents, not wrapped); an empty or unconfigured body means "test what is saved". A `connectionStringOverride` comes back from GET with its password masked as `********`; sending the mask back keeps the stored password so a user can test before saving; an empty `password` falls back to the stored one. They always answer 200 with `ok` true/false (never 500).
 
+## Scheduled runs and automation (Admin only, like all automation settings)
+`schedules` is part of the settings object (`GET/PUT /settings`), at most 20 entries:
+```jsonc
+"schedules": [ { "id": "", "name": "", "enabled": false, "templateId": "<run template id>", "time": "02:00", "days": ["Mon","Tue"] } ]
+```
+- `id` is empty for a new schedule; the server assigns one. `name` is optional (60 chars). `time` is `HH:mm`, server local time.
+- PUT validation (400 `{message}`, nothing saved): bad time, unknown day name, more than 20, and for an ENABLED schedule: no day, or no template (an older enabled schedule that already had no template stays allowed until edited; it keeps using the Settings defaults). An unknown/deleted `templateId` is allowed to save and is flagged.
+- **Migration:** the old single `schedule` object (settings.json or an old client) is moved once into the list as id `default` (only if it differs from the untouched default), the old field is removed from the file, and its last-run state is adopted. The API no longer returns `schedule`. A PUT without `schedules` keeps the stored list.
+- Status never lives in settings (it is in `automation-state.json`).
+
+| Method | Route | Result |
+|---|---|---|
+| GET | `/schedules` | `[{ id, name, enabled, templateId, templateName, templateMissing, time, days, running, status: { lastFiredAt, lastOk, lastMessage, lastRunId, nextDueAt } }]` |
+| POST | `/schedules/{id}/run-now` | `{ ok, message, runId }`; 404 unknown id; 409 when that schedule is already running. Does not count as the schedule's run of the day. |
+| GET | `/automation/status` | `{ notificationsConfigured, lastNotice }` (the old `schedule` / `lastRun` fields and `POST /automation/run-now` were removed) |
+
+`GET /run-templates` (any signed-in user) adds `schedules: [{ id, enabled, time, days }]` per template, for the "Scheduled: Mon-Fri 02:00" badge.
+
+Behaviour: one ticker (every 30 s) evaluates all schedules in list order. Each fires at most once per local day, at/after its time, on its days. A time missed by more than 6 hours (service down) is skipped, recorded as failed "missed", and not retried that day (unchanged from the single-schedule ticker). The same schedule never overlaps itself; different schedules run one at a time. Run name: `<template name> · yyyy-MM-dd HH:mm`, run by `scheduler`, template criteria read at fire time. A deleted template or criteria that no longer validate: skipped, status Failed with the reason, no retry that day, other schedules unaffected. Exception alert: compared with the previous scheduler run of the SAME template (same name prefix); none = "first run", no email. Manual runs are unchanged.
+
 ## Status (any signed-in user)
 `GET /status` → `{ version, storage: "sql" | "memory", b1Configured: bool, writebackEnabled: bool, defaultSource: "mock"|"b1-sql", horizonDays, bucketDays }`
 

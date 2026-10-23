@@ -279,19 +279,59 @@ public static class ExceptionAreas
     }
 }
 
-/// <summary>Run MRP by itself at a fixed time of day (the server's local time). OFF by default.</summary>
+/// <summary>One scheduled run: a saved Run MRP template, run at a time of day (server local time) on chosen days.</summary>
 public sealed class ScheduleSettings
 {
     public static readonly string[] AllDays = { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
+    public const int MaxSchedules = 20;
+    /// <summary>Id given to the single schedule of an older settings file when it is moved into the list.</summary>
+    public const string MigratedId = "default";
 
+    /// <summary>Stable id; empty from the UI for a new schedule (the server assigns one).</summary>
+    public string Id { get; set; } = "";
+    /// <summary>Optional label, up to 60 characters.</summary>
+    public string Name { get; set; } = "";
     public bool Enabled { get; set; }
     /// <summary>"HH:mm", 24-hour, the server's local time.</summary>
     public string Time { get; set; } = "02:00";
     public List<string> Days { get; set; } = new(AllDays);
-    /// <summary>A saved Run MRP template (id) to run with; empty = the Settings defaults.</summary>
+    /// <summary>A saved Run MRP template (id). Required to enable a schedule; a template that was deleted later is allowed to
+    /// stay saved: the schedule then reports "template missing" and is skipped.</summary>
     public string TemplateId { get; set; } = "";
 
-    public ScheduleSettings Clone() => new() { Enabled = Enabled, Time = Time, Days = Days.ToList(), TemplateId = TemplateId };
+    public ScheduleSettings Clone() => new() { Id = Id, Name = Name, Enabled = Enabled, Time = Time, Days = Days.ToList(), TemplateId = TemplateId };
+
+    /// <summary>Day name ("Mon".."Sun") for any text that starts with one, else null.</summary>
+    public static string? DayOf(string? d) => d is null ? null : AllDays.FirstOrDefault(x => d.StartsWith(x, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>True when a legacy single schedule differs from the untouched default (so it is worth keeping).</summary>
+    [JsonIgnore]
+    public bool IsCustomised => Enabled || !string.IsNullOrWhiteSpace(TemplateId) || Time != "02:00" || (Days?.Count ?? 7) != 7;
+
+    /// <summary>
+    /// What the administrator must fix before saving, or null. A bad time is refused (not silently replaced); an enabled schedule
+    /// needs a template and at least one day. <paramref name="stored"/> lets a schedule saved before templates were required
+    /// stay enabled without one (it keeps using the Settings defaults) until somebody edits it.
+    /// </summary>
+    public static string? Validate(List<ScheduleSettings> incoming, List<ScheduleSettings> stored)
+    {
+        if (incoming.Count > MaxSchedules) return $"At most {MaxSchedules} schedules are allowed.";
+        for (var n = 0; n < incoming.Count; n++)
+        {
+            var s = incoming[n];
+            var label = string.IsNullOrWhiteSpace(s.Name) ? $"Schedule {n + 1}" : $"Schedule \"{s.Name.Trim()}\"";
+            if (!TimeOnly.TryParseExact((s.Time ?? "").Trim(), "HH:mm", out _)) return $"{label}: the time must be HH:mm, for example 02:00.";
+            if ((s.Days ?? new()).Any(d => DayOf(d) is null)) return $"{label}: the days must be Mon, Tue, Wed, Thu, Fri, Sat or Sun.";
+            if (!s.Enabled) continue;
+            if (!(s.Days ?? new()).Any()) return $"{label}: choose at least one day.";
+            if (string.IsNullOrWhiteSpace(s.TemplateId))
+            {
+                var grandfathered = !string.IsNullOrEmpty(s.Id) && stored.Any(o => o.Id == s.Id && o.Enabled && string.IsNullOrWhiteSpace(o.TemplateId));
+                if (!grandfathered) return $"{label}: choose a template to run.";
+            }
+        }
+        return null;
+    }
 }
 
 /// <summary>Everything an administrator configures from the Settings screen.</summary>
@@ -304,12 +344,17 @@ public sealed class AppSettings
     public PlanningSettings Planning { get; set; } = new();
     public AiSettings Ai { get; set; } = new();
     public NotificationSettings Notifications { get; set; } = new();
-    public ScheduleSettings Schedule { get; set; } = new();
+    /// <summary>The scheduled runs (at most 20). Null on the wire from an older client = keep the stored ones.</summary>
+    public List<ScheduleSettings>? Schedules { get; set; }
+    /// <summary>LEGACY single schedule (before multiple schedules). Read from an old settings file or an old client and moved into
+    /// <see cref="Schedules"/> once; never written back and never returned.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ScheduleSettings? Schedule { get; set; }
 
     public AppSettings Clone() => new()
     {
         CobaltDb = CobaltDb.Clone(), B1Db = B1Db.Clone(), ServiceLayer = ServiceLayer.Clone(),
         Planning = Planning.Clone(), Ai = Ai?.Clone() ?? new AiSettings(),
-        Notifications = Notifications?.Clone() ?? new NotificationSettings(), Schedule = Schedule?.Clone() ?? new ScheduleSettings(),
+        Notifications = Notifications?.Clone() ?? new NotificationSettings(), Schedules = Schedules?.Select(x => x.Clone()).ToList(), Schedule = Schedule?.Clone(),
     };
 }

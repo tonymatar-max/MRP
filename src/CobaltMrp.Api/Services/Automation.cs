@@ -42,18 +42,32 @@ public sealed class SmtpEmailSender : IEmailSender
 
 // ---- What the automation did last (kept across restarts) -----------------------------------------------------
 
+/// <summary>What one schedule did last. Lives in automation-state.json, never in settings.</summary>
+public sealed class ScheduleStatus
+{
+    /// <summary>The local date (yyyy-MM-dd) this schedule last handled, so a restart never repeats a day.</summary>
+    public string? LastScheduledDate { get; set; }
+    public DateTimeOffset? LastFiredAt { get; set; }
+    public bool? LastOk { get; set; }
+    public string? LastMessage { get; set; }
+    public Guid? LastRunId { get; set; }
+}
+
 public sealed class AutomationInfo
 {
-    public DateTimeOffset? LastRunAt { get; set; }
-    public Guid? LastRunId { get; set; }
-    public bool? LastRunOk { get; set; }
-    public string? LastRunMessage { get; set; }
-    /// <summary>The local date (yyyy-MM-dd) the schedule last handled, so a restart never repeats a day.</summary>
-    public string? LastScheduledDate { get; set; }
+    /// <summary>Per schedule id.</summary>
+    public Dictionary<string, ScheduleStatus> Schedules { get; set; } = new();
     public DateTimeOffset? LastNoticeAt { get; set; }
     public bool? LastNoticeOk { get; set; }
     public string? LastNoticeMessage { get; set; }
     public int LastNoticeNewExceptions { get; set; }
+
+    // Legacy single-schedule fields (before multiple schedules). Read once and moved into Schedules["default"].
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] public DateTimeOffset? LastRunAt { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] public Guid? LastRunId { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] public bool? LastRunOk { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] public string? LastRunMessage { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] public string? LastScheduledDate { get; set; }
 }
 
 public sealed class AutomationState
@@ -70,9 +84,27 @@ public sealed class AutomationState
         _path = Path.Combine(dataDir, "automation-state.json");
         try { if (File.Exists(_path)) _info = JsonSerializer.Deserialize<AutomationInfo>(File.ReadAllText(_path), Json) ?? new(); }
         catch { _info = new(); }
+        _info.Schedules ??= new();
+        MigrateLegacy(_info);
+    }
+
+    /// <summary>The old single schedule's last state becomes the state of the migrated schedule (id "default"): no run repeats or is lost.</summary>
+    internal static void MigrateLegacy(AutomationInfo i)
+    {
+        if (i.LastScheduledDate is null && i.LastRunAt is null) return;
+        if (!i.Schedules.ContainsKey(ScheduleSettings.MigratedId))
+            i.Schedules[ScheduleSettings.MigratedId] = new ScheduleStatus
+            {
+                LastScheduledDate = i.LastScheduledDate, LastFiredAt = i.LastRunAt, LastOk = i.LastRunOk, LastMessage = i.LastRunMessage, LastRunId = i.LastRunId,
+            };
+        i.LastScheduledDate = null; i.LastRunAt = null; i.LastRunOk = null; i.LastRunMessage = null; i.LastRunId = null;
     }
 
     public AutomationInfo Get() { lock (_lock) return JsonSerializer.Deserialize<AutomationInfo>(JsonSerializer.Serialize(_info, Json), Json)!; }
+
+    /// <summary>Change one schedule's status (created when missing).</summary>
+    public void UpdateSchedule(string id, Action<ScheduleStatus> change) =>
+        Update(i => { if (!i.Schedules.TryGetValue(id, out var st)) i.Schedules[id] = st = new ScheduleStatus(); change(st); });
 
     public void Update(Action<AutomationInfo> change)
     {
@@ -119,14 +151,16 @@ public sealed class ExceptionNotifier(SettingsService settings, IEmailSender sen
 {
     public static string Key(ExceptionMessage e) => string.Join('|', e.Type, e.ItemCode, e.WarehouseCode ?? "", e.SourceDocKey ?? "", e.SourceLine?.ToString() ?? "");
 
-    public async Task<NotifyResult> NotifyAsync(MrpRun run, bool scheduled, CancellationToken ct)
+    /// <param name="sameTemplateAs">For scheduled runs: the template name, so the comparison is with the previous scheduled run OF THAT
+    /// TEMPLATE (name "&lt;template&gt; · date", started by the scheduler). Null = the run just before this one, whatever it was.</param>
+    public async Task<NotifyResult> NotifyAsync(MrpRun run, bool scheduled, CancellationToken ct, string? sameTemplateAs = null)
     {
         var n = settings.Get().Notifications;
         if (!n.IsConfigured) return new(false, 0, "Notifications are off or not fully set up.");
         if (!scheduled && n.NotifyOn != "AllRuns") return new(false, 0, "Only scheduled runs send an email (Settings > Automation).");
         try
         {
-            var previous = await PreviousAsync(run, ct);
+            var previous = await PreviousAsync(run, sameTemplateAs, ct);
             var seen = previous?.Exceptions.Select(Key).ToHashSet() ?? new HashSet<string>();
             var fresh = run.Exceptions.Where(e => e.ActionStatus != "Done" && (previous is null || !seen.Contains(Key(e)))).ToList();
             if (previous is null) return Record(false, 0, "This is the first run: nothing to compare with.");
@@ -164,11 +198,17 @@ public sealed class ExceptionNotifier(SettingsService settings, IEmailSender sen
         return new NotifyResult(sent, count, message);
     }
 
-    private async Task<MrpRun?> PreviousAsync(MrpRun run, CancellationToken ct)
+    private async Task<MrpRun?> PreviousAsync(MrpRun run, string? sameTemplateAs, CancellationToken ct)
     {
         var list = await store.ListAsync(ct);
         var idx = list.ToList().FindIndex(r => r.Id == run.Id);
-        var prev = idx >= 0 ? list.Skip(idx + 1).FirstOrDefault() : list.FirstOrDefault(r => r.Id != run.Id);
+        IEnumerable<RunSummary> older = idx >= 0 ? list.Skip(idx + 1) : list.Where(r => r.Id != run.Id);
+        if (sameTemplateAs is not null)
+        {
+            var prefix = sameTemplateAs + ScheduledJob.NameSeparator;
+            older = older.Where(r => r.RunBy == ScheduledJob.User && r.Name != null && r.Name.StartsWith(prefix, StringComparison.Ordinal));
+        }
+        var prev = older.FirstOrDefault();
         return prev is null ? null : await store.GetAsync(prev.Id, ct);
     }
 
@@ -203,114 +243,168 @@ public sealed class ExceptionNotifier(SettingsService settings, IEmailSender sen
     }
 }
 
-// ---- The schedule --------------------------------------------------------------------------------------------
+// ---- The schedules ------------------------------------------------------------------------------------------
 
-public sealed record ScheduledOutcome(bool Ok, string Message, Guid? RunId);
+public sealed record ScheduledOutcome(bool Ok, string Message, Guid? RunId, bool Busy = false);
 
-/// <summary>The work the schedule does: run MRP, then send the new-exceptions email.</summary>
+/// <summary>The work one schedule does: run MRP with its template, then send the new-exceptions email.</summary>
 public interface IScheduledJob
 {
-    Task<ScheduledOutcome> RunAsync(CancellationToken ct);
+    Task<ScheduledOutcome> RunAsync(ScheduleSettings schedule, CancellationToken ct);
 }
 
-public sealed class ScheduledJob(IServiceScopeFactory scopes, SettingsService settings, AutomationState state, ILogger<ScheduledJob> log) : IScheduledJob
+/// <summary>
+/// Concurrency rule for scheduled runs. The SAME schedule never overlaps itself (a second attempt is refused at once);
+/// runs of DIFFERENT schedules are serialised (one MRP run at a time), so the engine, the run store and the SMTP step are never
+/// used by two scheduled runs at once.
+/// </summary>
+public sealed class ScheduleGate
 {
-    private static readonly SemaphoreSlim OneAtATime = new(1, 1);
+    private readonly SemaphoreSlim _all = new(1, 1);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _active = new();
 
-    public async Task<ScheduledOutcome> RunAsync(CancellationToken ct)
+    public bool IsActive(string id) => _active.ContainsKey(id);
+
+    public async Task<(bool Entered, T? Value)> TryRunAsync<T>(string id, Func<Task<T>> work, CancellationToken ct)
     {
-        if (!await OneAtATime.WaitAsync(0, ct)) return new(false, "A scheduled run is already in progress.", null);
+        if (!_active.TryAdd(id, 0)) return (false, default);
+        try
+        {
+            await _all.WaitAsync(ct);
+            try { return (true, await work()); }
+            finally { _all.Release(); }
+        }
+        finally { _active.TryRemove(id, out _); }
+    }
+}
+
+public sealed class ScheduledJob(IServiceScopeFactory scopes, AutomationState state, ScheduleGate gate, ILogger<ScheduledJob> log) : IScheduledJob
+{
+    /// <summary>Who started the run (shown as "Run by").</summary>
+    public const string User = "scheduler";
+    /// <summary>Run name = template name + this + local "yyyy-MM-dd HH:mm".</summary>
+    public const string NameSeparator = " · ";
+
+    public static string RunName(string templateName, DateTime local) => templateName + NameSeparator + local.ToString("yyyy-MM-dd HH:mm");
+
+    public async Task<ScheduledOutcome> RunAsync(ScheduleSettings schedule, CancellationToken ct)
+    {
+        var (entered, outcome) = await gate.TryRunAsync(schedule.Id, () => ExecuteAsync(schedule, ct), ct);
+        return entered ? outcome! : new ScheduledOutcome(false, "This schedule is already running.", null, Busy: true);
+    }
+
+    private async Task<ScheduledOutcome> ExecuteAsync(ScheduleSettings schedule, CancellationToken ct)
+    {
+        var label = string.IsNullOrWhiteSpace(schedule.Name) ? "Schedule " + schedule.Id[..Math.Min(8, schedule.Id.Length)] : schedule.Name;
+        ScheduledOutcome Done(bool ok, string message, Guid? runId)
+        {
+            state.UpdateSchedule(schedule.Id, st => { st.LastFiredAt = DateTimeOffset.UtcNow; st.LastOk = ok; st.LastMessage = message; st.LastRunId = runId; });
+            if (ok) log.LogInformation("Schedule '{Schedule}': {Message}", label, message); else log.LogWarning("Schedule '{Schedule}': {Message}", label, message);
+            return new ScheduledOutcome(ok, message, runId);
+        }
+
         try
         {
             using var scope = scopes.CreateScope();
             var sp = scope.ServiceProvider;
-            var s = settings.Get();
-            var planner = sp.GetRequiredService<RunPlanner>();
-            string? templateName = null, templateNote = null;
-            RunCriteria criteria;
-            if (Guid.TryParse(s.Schedule.TemplateId, out var tid) && await sp.GetRequiredService<IRunTemplateStore>().GetAsync(tid, ct) is { } t
-                && RunCriteria.FromJson(t.CriteriaJson) is { } tc)
-            { criteria = tc; templateName = t.Name; }
-            else
+            string templateName; RunCriteria criteria;
+            if (Guid.TryParse(schedule.TemplateId, out var tid))
             {
-                criteria = planner.Defaults(null);
-                if (!string.IsNullOrWhiteSpace(s.Schedule.TemplateId)) templateNote = " (the chosen template no longer exists: the Settings defaults were used)";
+                if (await sp.GetRequiredService<IRunTemplateStore>().GetAsync(tid, ct) is not { } t)
+                    return Done(false, "Skipped: the template no longer exists. Choose another template for this schedule.", null);
+                if (RunCriteria.FromJson(t.CriteriaJson) is not { } tc)
+                    return Done(false, $"Skipped: the options saved in template \"{t.Name}\" cannot be read. Save the template again.", null);
+                criteria = tc; templateName = t.Name;
+                if (criteria.Validate() is { } bad)
+                    return Done(false, $"Skipped: the options in template \"{t.Name}\" are no longer valid ({bad}).", null);
             }
+            else if (string.IsNullOrWhiteSpace(schedule.TemplateId) && schedule.Enabled)
+            {   // a schedule saved before templates were required: keeps using the Settings defaults
+                criteria = sp.GetRequiredService<RunPlanner>().Defaults(null); templateName = "Settings defaults";
+            }
+            else return Done(false, "Skipped: no template is chosen for this schedule.", null);
             criteria.Horizon.StartDate = null;          // always plan from today
 
             var launcher = sp.GetRequiredService<RunLauncher>();
-            var name = $"Scheduled: {templateName ?? "Settings defaults"} ({DateTime.Now:yyyy-MM-dd})";
-            var (run, error) = await launcher.LaunchAsync(criteria, "scheduler", name, "Started by the schedule" + templateNote, ct);
-            if (run is null)
-            {
-                var msg = "The scheduled run failed: " + error;
-                state.Update(i => { i.LastRunAt = DateTimeOffset.UtcNow; i.LastRunId = null; i.LastRunOk = false; i.LastRunMessage = msg; });
-                log.LogWarning("{Message}", msg);
-                return new(false, msg, null);
-            }
+            var (run, error) = await launcher.LaunchAsync(criteria, User, RunName(templateName, DateTime.Now), $"Started by schedule \"{label}\"", ct);
+            if (run is null) return Done(false, "The scheduled run failed: " + error, null);
 
-            var notice = await sp.GetRequiredService<ExceptionNotifier>().NotifyAsync(run, scheduled: true, ct);
-            var ok = $"Run finished: {run.PlannedOrders.Count} planned orders, {run.Exceptions.Count} exceptions. {notice.Message}{templateNote}";
-            state.Update(i => { i.LastRunAt = DateTimeOffset.UtcNow; i.LastRunId = run.Id; i.LastRunOk = true; i.LastRunMessage = ok; });
-            log.LogInformation("Scheduled run {Id}: {Message}", run.Id, ok);
-            return new(true, ok, run.Id);
+            var notice = await sp.GetRequiredService<ExceptionNotifier>().NotifyAsync(run, scheduled: true, ct, sameTemplateAs: templateName);
+            return Done(true, $"Run finished: {run.PlannedOrders.Count} planned orders, {run.Exceptions.Count} exceptions. {notice.Message}", run.Id);
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
-            var msg = "The scheduled run failed: " + ex.Message;
-            state.Update(i => { i.LastRunAt = DateTimeOffset.UtcNow; i.LastRunOk = false; i.LastRunMessage = msg; });
-            log.LogError(ex, "Scheduled run failed");
-            return new(false, msg, null);
+            log.LogError(ex, "Schedule '{Schedule}' failed", label);
+            state.UpdateSchedule(schedule.Id, st => { st.LastFiredAt = DateTimeOffset.UtcNow; st.LastOk = false; st.LastMessage = "The scheduled run failed: " + ex.Message; st.LastRunId = null; });
+            return new ScheduledOutcome(false, "The scheduled run failed: " + ex.Message, null);
         }
-        finally { OneAtATime.Release(); }
     }
 }
 
-/// <summary>Decides, once a tick, whether the schedule is due. Pure logic over a clock so it can be tested.</summary>
+/// <summary>
+/// Decides, once a tick, which schedules are due. Pure logic over a clock so it can be tested. Each schedule fires at most once
+/// per local day, at or after its time, on its chosen days; one loop evaluates them all, one after the other.
+/// </summary>
 public sealed class ScheduleTicker(SettingsService settings, AutomationState state, IScheduledJob job, ILogger log, Func<DateTime>? clock = null)
 {
     /// <summary>A run missed by more than this (service stopped at the scheduled time) is skipped, not started at a surprising hour.</summary>
     public static readonly TimeSpan CatchUp = TimeSpan.FromHours(6);
     private readonly Func<DateTime> _now = clock ?? (() => DateTime.Now);
 
-    private static string Day(DateTime d) => d.DayOfWeek switch
+    public static string Day(DateTime d) => d.DayOfWeek switch
     {
         DayOfWeek.Monday => "Mon", DayOfWeek.Tuesday => "Tue", DayOfWeek.Wednesday => "Wed", DayOfWeek.Thursday => "Thu",
         DayOfWeek.Friday => "Fri", DayOfWeek.Saturday => "Sat", _ => "Sun",
     };
 
-    /// <returns>True when a run was started by this tick.</returns>
+    /// <returns>True when at least one run was started by this tick.</returns>
     public async Task<bool> TickAsync(CancellationToken ct)
     {
-        var sch = settings.Get().Schedule;
-        if (!sch.Enabled || !TimeOnly.TryParseExact(sch.Time, "HH:mm", out var at)) return false;
+        var schedules = settings.Get().Schedules ?? new();
         var now = _now();
+        var started = false;
+        foreach (var sch in schedules)
+        {
+            ct.ThrowIfCancellationRequested();
+            try { started |= await TickOneAsync(sch, now, ct); }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex) { log.LogError(ex, "Schedule {Id} could not be evaluated", sch.Id); }
+        }
+        // Forget the state of schedules that were removed.
+        var ids = schedules.Select(s => s.Id).ToHashSet();
+        if (state.Get().Schedules.Keys.Any(k => !ids.Contains(k)))
+            state.Update(i => { foreach (var k in i.Schedules.Keys.Where(k => !ids.Contains(k)).ToList()) i.Schedules.Remove(k); });
+        return started;
+    }
+
+    private async Task<bool> TickOneAsync(ScheduleSettings sch, DateTime now, CancellationToken ct)
+    {
+        if (!sch.Enabled || !TimeOnly.TryParseExact(sch.Time, "HH:mm", out var at)) return false;
         if (!sch.Days.Contains(Day(now))) return false;
         var due = now.Date + at.ToTimeSpan();
         if (now < due) return false;
         var today = now.ToString("yyyy-MM-dd");
-        if (state.Get().LastScheduledDate == today) return false;
+        if (state.Get().Schedules.GetValueOrDefault(sch.Id)?.LastScheduledDate == today) return false;
 
-        state.Update(i => i.LastScheduledDate = today);          // claim the day first: a crash must not repeat it
+        state.UpdateSchedule(sch.Id, st => st.LastScheduledDate = today);          // claim the day first: a crash must not repeat it
         if (now - due > CatchUp)
         {
             var msg = $"The scheduled run for {at:HH\\:mm} was missed (the service was not running) and was skipped.";
-            state.Update(i => { i.LastRunAt = DateTimeOffset.UtcNow; i.LastRunOk = false; i.LastRunMessage = msg; });
-            log.LogWarning("{Message}", msg);
+            state.UpdateSchedule(sch.Id, st => { st.LastFiredAt = DateTimeOffset.UtcNow; st.LastOk = false; st.LastMessage = msg; st.LastRunId = null; });
+            log.LogWarning("Schedule {Id}: {Message}", sch.Id, msg);
             return false;
         }
-        await job.RunAsync(ct);
+        await job.RunAsync(sch, ct);
         return true;
     }
 
-    /// <summary>The next time the schedule will fire (server local time), or null when it is off.</summary>
-    public DateTime? NextRun()
+    /// <summary>The next time this schedule will fire (server local time), or null when it is off.</summary>
+    public DateTime? NextRun(ScheduleSettings sch, AutomationInfo info)
     {
-        var sch = settings.Get().Schedule;
         if (!sch.Enabled || sch.Days.Count == 0 || !TimeOnly.TryParseExact(sch.Time, "HH:mm", out var at)) return null;
         var now = _now();
-        var handled = state.Get().LastScheduledDate;
+        var handled = info.Schedules.GetValueOrDefault(sch.Id)?.LastScheduledDate;
         for (var d = 0; d <= 7; d++)
         {
             var day = now.Date.AddDays(d);

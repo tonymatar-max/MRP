@@ -25,3 +25,20 @@
 .auto-status div { display: grid; grid-template-columns: 110px 1fr; gap: 8px; }
 .auto-status dt { color: var(--muted); }
 .auto-status dd { margin: 0; }
+
+/* scheduled runs: one card per schedule */
+.sched-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.sched-head > div { flex: 1 1 280px; min-width: 0; }
+.sched-title { margin: 0 0 4px; font-size: 16px; }
+.sched-head p { margin: 0; }
+.sched-card .card-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sched-card .card-h h3 { min-width: 0; overflow-wrap: anywhere; }
+.sched-card .card-h .spacer { flex: 1; }
+.sched-card .card-f.sched-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.sched-card .card-f.sched-status .grow { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; }
+.sched-card select[aria-invalid="true"], .sched-card input[aria-invalid="true"] { border-color: var(--danger, #c0392b); }
+.empty-note { text-align: center; padding: 8px 0; }
+.empty-note p { margin: 4px 0 0; }
+.tpl-sched { max-width: 100%; overflow-wrap: anywhere; }
+
+.pill.info { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-strong); }

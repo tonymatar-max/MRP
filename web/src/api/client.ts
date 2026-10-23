@@ -21,7 +21,7 @@ import * as mtp from '../mocks/templates';
 import * as md from '../mocks/masterdata';
 import * as mex from '../mocks/exceptions';
 import * as mpd from '../mocks/previewDetails';
-import type { ExecutePayload, ExecutePreview, ExecuteRequest, ExecuteResult, SapLogEntry, SapLogQuery, SupplierImportResponse, SupplierImportRow, PushPreview, PushRequestItem, PushExecuteResult, RunTemplate, NotificationSettings, AutomationStatus, ScheduledOutcome } from './types';
+import type { ExecutePayload, ExecutePreview, ExecuteRequest, ExecuteResult, SapLogEntry, SapLogQuery, SupplierImportResponse, SupplierImportRow, PushPreview, PushRequestItem, PushExecuteResult, RunTemplate, NotificationSettings, AutomationStatus, ScheduledOutcome, ScheduleView } from './types';
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string) || '/api';
 export const USE_MOCK =
@@ -260,9 +260,13 @@ export const api = {
     if (USE_MOCK) return mocked(() => adm.automationStatus(), 200);
     return http<AutomationStatus>('/automation/status');
   },
-  async runScheduledNow(): Promise<ScheduledOutcome> {
+  async schedules(): Promise<ScheduleView[]> {
+    if (USE_MOCK) return mocked(() => mtp.schedulesView(), 200);
+    return http<ScheduleView[]>('/schedules');
+  },
+  async runScheduleNow(id: string): Promise<ScheduledOutcome> {
     if (USE_MOCK) return mocked(() => ({ ok: true, message: 'Mock: the scheduled run would start now.', runId: null }), 800);
-    return post<ScheduledOutcome>('/automation/run-now');
+    return post<ScheduledOutcome>(`/schedules/${encodeURIComponent(id)}/run-now`);
   },
   async testAi(a: AiSettings): Promise<OkResult> {
     if (USE_MOCK) return mocked(() => adm.testAi(a), 800);

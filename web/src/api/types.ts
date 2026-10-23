@@ -299,7 +299,7 @@ export interface AppSettings {
   planning: PlanningSettings;
   ai: AiSettings;
   notifications: NotificationSettings;
-  schedule: ScheduleSettings;
+  schedules: ScheduleSettings[];
 }
 
 export interface AiStatus { enabled: boolean; configured: boolean; model: string }
@@ -464,7 +464,8 @@ export interface PushItemResult { itemCode: string; success: boolean; message: s
 export interface PushExecuteResult { pushed: number; failed: number; items: PushItemResult[] }
 
 // ----- saved Run MRP option sets -----
-export interface RunTemplate { id: string; name: string; createdBy: string; updatedAt: string; criteria: RunCriteria }
+export interface TemplateSchedule { id: string; enabled: boolean; time: string; days: Weekday[] }
+export interface RunTemplate { id: string; name: string; createdBy: string; updatedAt: string; criteria: RunCriteria; schedules?: TemplateSchedule[] }
 
 // ----- automation: new-exception emails and scheduled runs -----
 export interface NotificationSettings {
@@ -473,11 +474,13 @@ export interface NotificationSettings {
   password: string; passwordSet: boolean;
   from: string; recipients: string; publicUrl: string; notifyOn: 'ScheduledRuns' | 'AllRuns';
 }
-export interface ScheduleSettings { enabled: boolean; time: string; days: Weekday[]; templateId: string }
+/** One scheduled run. `id` is "" for a schedule that has not been saved yet (the server assigns it). */
+export interface ScheduleSettings { id: string; name: string; enabled: boolean; time: string; days: Weekday[]; templateId: string }
+export interface ScheduleStatusInfo { lastFiredAt: string | null; lastOk: boolean | null; lastMessage: string | null; lastRunId: string | null; nextDueAt: string | null }
+/** A saved schedule with what it did last (GET /schedules; the status never lives in settings). */
+export interface ScheduleView extends ScheduleSettings { templateName: string | null; templateMissing: boolean; running: boolean; status: ScheduleStatusInfo }
 export interface AutomationStatus {
-  schedule: { enabled: boolean; time: string; days: string[]; templateId: string; nextRunAt: string | null };
   notificationsConfigured: boolean;
-  lastRun: { at: string | null; id: string | null; ok: boolean | null; message: string | null };
   lastNotice: { at: string | null; ok: boolean | null; message: string | null; newExceptions: number };
 }
 export interface ScheduledOutcome { ok: boolean; message: string; runId: string | null }

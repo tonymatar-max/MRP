@@ -193,26 +193,31 @@ public class AutomationTests : IDisposable
         {
             a.Notifications.SmtpPort = 99999; a.Notifications.NotifyOn = "Sometimes"; a.Notifications.PublicUrl = "javascript:alert(1)";
             a.Notifications.Recipients = "ok@x.com, nonsense; OK@x.com\nsecond@y.com";
-            a.Schedule.Enabled = true; a.Schedule.Time = "25:99"; a.Schedule.Days = new() { "monday", "FRI", "xyz", "Fri" };
+            a.Schedules = new() { new ScheduleSettings { Id = "s1", Enabled = true, Time = "25:99", Days = new() { "monday", "FRI", "xyz", "Fri" } } };
         }).Get();
         Assert.Equal(587, s.Notifications.SmtpPort); Assert.Equal("ScheduledRuns", s.Notifications.NotifyOn); Assert.Equal("", s.Notifications.PublicUrl);
         Assert.Equal("ok@x.com, second@y.com", s.Notifications.Recipients);
-        Assert.Equal("02:00", s.Schedule.Time); Assert.Equal(new[] { "Mon", "Fri" }, s.Schedule.Days);
+        Assert.Equal("02:00", s.Schedules![0].Time); Assert.Equal(new[] { "Mon", "Fri" }, s.Schedules[0].Days);
     }
 
-    // ---------------------------------------------------------------- schedule
+    // ---------------------------------------------------------------- schedule (one schedule: the original behaviour, kept)
 
     private sealed class FakeJob : IScheduledJob
     {
         public int Runs { get; private set; }
-        public Task<ScheduledOutcome> RunAsync(CancellationToken ct) { Runs++; return Task.FromResult(new ScheduledOutcome(true, "ok", Guid.NewGuid())); }
+        public List<string> Fired { get; } = new();
+        public Task<ScheduledOutcome> RunAsync(ScheduleSettings schedule, CancellationToken ct) { Runs++; Fired.Add(schedule.Id); return Task.FromResult(new ScheduledOutcome(true, "ok", Guid.NewGuid())); }
     }
+
+    private static ScheduleSettings One(Action<ScheduleSettings> edit) { var s = new ScheduleSettings { Id = "s1", TemplateId = Guid.NewGuid().ToString() }; edit(s); return s; }
+    private SettingsService WithSchedules(params ScheduleSettings[] list) => Settings(a => a.Schedules = list.ToList());
+    private static ScheduleStatus St(AutomationState s, string id = "s1") => s.Get().Schedules[id];
 
     [Fact]
     public async Task Schedule_RunsOnceADay_AtItsTime_OnTheChosenDays()
     {
         var clock = new DateTime(2026, 10, 14, 1, 0, 0);
-        var s = Settings(a => { a.Schedule.Enabled = true; a.Schedule.Time = "02:00"; a.Schedule.Days = new() { "Mon", "Wed" }; });
+        var s = WithSchedules(One(a => { a.Enabled = true; a.Time = "02:00"; a.Days = new() { "Mon", "Wed" }; }));
         var job = new FakeJob(); var state = new AutomationState(null);
         var t = new ScheduleTicker(s, state, job, NullLogger.Instance, () => clock);
 
@@ -230,28 +235,29 @@ public class AutomationTests : IDisposable
     [Fact]
     public async Task Schedule_Off_DoesNothing()
     {
-        var s = Settings(a => { a.Schedule.Enabled = false; a.Schedule.Time = "00:01"; });
+        var sch = One(a => { a.Enabled = false; a.Time = "00:01"; });
+        var s = WithSchedules(sch);
         var job = new FakeJob();
         var t = new ScheduleTicker(s, new AutomationState(null), job, NullLogger.Instance, () => new DateTime(2026, 10, 14, 12, 0, 0));
-        Assert.False(await t.TickAsync(default)); Assert.Equal(0, job.Runs); Assert.Null(t.NextRun());
+        Assert.False(await t.TickAsync(default)); Assert.Equal(0, job.Runs); Assert.Null(t.NextRun(sch, new AutomationInfo()));
     }
 
     [Fact]
     public async Task AMissedRun_IsSkippedAndRecorded_NotStartedAtASurprisingHour()
     {
-        var s = Settings(a => { a.Schedule.Enabled = true; a.Schedule.Time = "02:00"; });
+        var s = WithSchedules(One(a => { a.Enabled = true; a.Time = "02:00"; }));
         var job = new FakeJob(); var state = new AutomationState(null);
         var t = new ScheduleTicker(s, state, job, NullLogger.Instance, () => new DateTime(2026, 10, 14, 15, 0, 0));      // service started at 15:00
         Assert.False(await t.TickAsync(default));
         Assert.Equal(0, job.Runs);
-        Assert.Contains("missed", state.Get().LastRunMessage); Assert.False(state.Get().LastRunOk);
+        Assert.Contains("missed", St(state).LastMessage); Assert.False(St(state).LastOk);
         Assert.False(await t.TickAsync(default));                         // and the day is not retried
     }
 
     [Fact]
     public async Task ARestartDoesNotRepeatToday_AndACatchUpWithinSixHoursStillRuns()
     {
-        var s = Settings(a => { a.Schedule.Enabled = true; a.Schedule.Time = "02:00"; });
+        var s = WithSchedules(One(a => { a.Enabled = true; a.Time = "02:00"; }));
         var file = new AutomationState(_dir);
         var job = new FakeJob();
         var late = new ScheduleTicker(s, file, job, NullLogger.Instance, () => new DateTime(2026, 10, 14, 4, 0, 0));       // service came up at 04:00
@@ -264,8 +270,8 @@ public class AutomationTests : IDisposable
     [Fact]
     public void NextRun_PointsAtTheNextChosenDay()
     {
-        var s = Settings(a => { a.Schedule.Enabled = true; a.Schedule.Time = "02:00"; a.Schedule.Days = new() { "Fri" }; });
-        var t = new ScheduleTicker(s, new AutomationState(null), new FakeJob(), NullLogger.Instance, () => new DateTime(2026, 10, 14, 9, 0, 0));       // Wed
-        Assert.Equal(new DateTime(2026, 10, 16, 2, 0, 0), t.NextRun());
+        var sch = One(a => { a.Enabled = true; a.Time = "02:00"; a.Days = new() { "Fri" }; });
+        var t = new ScheduleTicker(WithSchedules(sch), new AutomationState(null), new FakeJob(), NullLogger.Instance, () => new DateTime(2026, 10, 14, 9, 0, 0));       // Wed
+        Assert.Equal(new DateTime(2026, 10, 16, 2, 0, 0), t.NextRun(sch, new AutomationInfo()));
     }
 }

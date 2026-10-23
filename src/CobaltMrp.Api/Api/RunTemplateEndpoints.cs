@@ -1,10 +1,13 @@
 using CobaltMrp.Api.Services;
+using CobaltMrp.Api.Settings;
 using CobaltMrp.Domain;
 
 namespace CobaltMrp.Api.Api;
 
 public sealed record TemplateBody(string? Name, RunCriteria? Criteria);
-public sealed record TemplateDto(Guid Id, string Name, string CreatedBy, DateTimeOffset UpdatedAt, RunCriteria Criteria);
+/// <summary>Just enough of a schedule for any signed-in user to see that a template is scheduled (no ids of anything private).</summary>
+public sealed record TemplateScheduleDto(string Id, bool Enabled, string Time, List<string> Days);
+public sealed record TemplateDto(Guid Id, string Name, string CreatedBy, DateTimeOffset UpdatedAt, RunCriteria Criteria, List<TemplateScheduleDto>? Schedules = null);
 
 /// <summary>Saved Run MRP option sets. Any signed-in user can save and use them; they never change SAP Business One.</summary>
 public static class RunTemplateEndpoints
@@ -13,20 +16,23 @@ public static class RunTemplateEndpoints
     {
         var g = api.MapGroup("/run-templates");
 
-        g.MapGet("", async (IRunTemplateStore store, CancellationToken ct) =>
-            (await store.ListAsync(ct)).Select(ToDto).Where(d => d is not null));
+        g.MapGet("", async (IRunTemplateStore store, SettingsService settings, CancellationToken ct) =>
+        {
+            var schedules = settings.Get().Schedules ?? new();
+            return (await store.ListAsync(ct)).Select(t => ToDto(t, schedules)).Where(d => d is not null);
+        });
 
-        g.MapPost("", async (TemplateBody body, HttpContext ctx, IRunTemplateStore store, CancellationToken ct) =>
+        g.MapPost("", async (TemplateBody body, HttpContext ctx, IRunTemplateStore store, SettingsService settings, CancellationToken ct) =>
         {
             var (name, criteria, error) = Check(body, isUpdate: false);
             if (error is not null) return Results.BadRequest(new { message = error });
             if (await NameTaken(store, name!, null, ct)) return Results.Conflict(new { message = "A template with this name already exists." });
             var t = new RunTemplate { Name = name!, CriteriaJson = criteria!.ToJson(), CreatedBy = ctx.User.Identity?.Name ?? "" };
             await store.SaveAsync(t, ct);
-            return Results.Ok(ToDto(t));
+            return Results.Ok(ToDto(t, settings.Get().Schedules));
         });
 
-        g.MapPut("/{id:guid}", async (Guid id, TemplateBody body, IRunTemplateStore store, CancellationToken ct) =>
+        g.MapPut("/{id:guid}", async (Guid id, TemplateBody body, IRunTemplateStore store, SettingsService settings, CancellationToken ct) =>
         {
             if (await store.GetAsync(id, ct) is not { } t) return Results.NotFound(new { message = "Template not found." });
             var (name, criteria, error) = Check(body, isUpdate: true);
@@ -39,15 +45,19 @@ public static class RunTemplateEndpoints
             if (criteria is not null) t.CriteriaJson = criteria.ToJson();
             t.UpdatedAt = DateTimeOffset.UtcNow;
             await store.SaveAsync(t, ct);
-            return Results.Ok(ToDto(t));
+            return Results.Ok(ToDto(t, settings.Get().Schedules));
         });
 
         g.MapDelete("/{id:guid}", async (Guid id, IRunTemplateStore store, CancellationToken ct) =>
             await store.DeleteAsync(id, ct) ? Results.NoContent() : Results.NotFound(new { message = "Template not found." }));
     }
 
-    internal static TemplateDto? ToDto(RunTemplate t) =>
-        RunCriteria.FromJson(t.CriteriaJson) is { } c ? new TemplateDto(t.Id, t.Name, t.CreatedBy, t.UpdatedAt, c) : null;
+    internal static TemplateDto? ToDto(RunTemplate t, IEnumerable<CobaltMrp.Api.Settings.ScheduleSettings>? schedules = null) =>
+        RunCriteria.FromJson(t.CriteriaJson) is { } c
+            ? new TemplateDto(t.Id, t.Name, t.CreatedBy, t.UpdatedAt, c,
+                (schedules ?? Array.Empty<CobaltMrp.Api.Settings.ScheduleSettings>()).Where(x => x.TemplateId == t.Id.ToString())
+                    .Select(x => new TemplateScheduleDto(x.Id, x.Enabled, x.Time, x.Days)).ToList())
+            : null;
 
     private static (string? Name, RunCriteria? Criteria, string? Error) Check(TemplateBody b, bool isUpdate)
     {

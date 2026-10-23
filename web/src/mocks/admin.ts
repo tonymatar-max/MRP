@@ -36,15 +36,18 @@ let settings: AppSettings = {
   },
   ai: { enabled: false, apiKey: '', apiKeySet: false, model: 'anthropic/claude-opus-5', maxTokens: 1024 },
   notifications: { enabled: false, smtpHost: '', smtpPort: 587, useSsl: true, userName: '', password: '', passwordSet: false, from: '', recipients: '', publicUrl: '', notifyOn: 'ScheduledRuns' },
-  schedule: { enabled: false, time: '02:00', days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], templateId: '' },
+  schedules: [],
 };
 // Mock "server side" secrets, kept apart from the object returned to the UI.
 const secrets = { cobalt: '', b1: '', sl: '', ai: '', smtp: '' };
 
+let schedSeq = 0;
+/** Schedules for the template badges (any signed-in user). */
+export const peekSchedules = () => clone(settings.schedules);
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 export const currentUsername = () => current?.username ?? 'unknown';
 export const requireSignedIn = () => { if (!current) throw new MockHttpError(401, 'Not signed in'); };
-const requireAdmin = () => {
+export const requireAdmin = () => {
   requireSignedIn();
   if (current!.role !== 'Admin') throw new MockHttpError(403, 'Administrator role required');
 };
@@ -105,6 +108,12 @@ export function putSettings(s: AppSettings): AppSettings {
   next.cobaltDb.passwordSet = !!secrets.cobalt;
   next.b1Db.passwordSet = !!secrets.b1;
   next.serviceLayer.passwordSet = !!secrets.sl;
+  next.schedules = (next.schedules ?? []).slice(0, 20).map((x) => {
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(x.time)) throw new MockHttpError(400, 'Schedule: the time must be HH:mm, for example 02:00.');
+    if (x.enabled && !x.days.length) throw new MockHttpError(400, 'Schedule: choose at least one day.');
+    if (x.enabled && !x.templateId) throw new MockHttpError(400, 'Schedule: choose a template to run.');
+    return { ...x, id: x.id || `sch-${++schedSeq}` };
+  });
   settings = next;
   return clone(settings);
 }
@@ -138,12 +147,8 @@ export function testEmail(n: AppSettings['notifications']): OkResult {
 }
 export function automationStatus() {
   requireAdmin();
-  const s = settings.schedule;
-  const next = new Date(); next.setDate(next.getDate() + 1); next.setHours(Number(s.time.slice(0, 2)), Number(s.time.slice(3, 5)), 0, 0);
   return {
-    schedule: { ...s, nextRunAt: s.enabled ? next.toISOString() : null },
     notificationsConfigured: settings.notifications.enabled && !!settings.notifications.smtpHost,
-    lastRun: { at: null, id: null, ok: null, message: null },
     lastNotice: { at: null, ok: null, message: null, newExceptions: 0 },
   };
 }

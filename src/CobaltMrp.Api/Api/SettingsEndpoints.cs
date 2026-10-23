@@ -18,7 +18,12 @@ public static class SettingsEndpoints
         g.MapGet("/", (SettingsService settings) => Results.Ok(SettingsService.Masked(settings.Get())));
 
         g.MapPut("/", (AppSettings body, SettingsService settings) =>
-            Results.Ok(SettingsService.Masked(settings.Save(body))));
+        {
+            // A bad time or an enabled schedule without a template/day is refused with a clear message (nothing is saved).
+            var incoming = body.Schedules ?? (body.Schedule is null ? new() : new List<ScheduleSettings> { body.Schedule });
+            if (ScheduleSettings.Validate(incoming, settings.Get().Schedules ?? new()) is { } bad) return Results.BadRequest(new { message = bad });
+            return Results.Ok(SettingsService.Masked(settings.Save(body)));
+        });
 
         // The Test buttons send the CURRENT (possibly unsaved) values of one section; an empty password
         // falls back to the stored one. They always answer 200 with ok true/false, never 500.
