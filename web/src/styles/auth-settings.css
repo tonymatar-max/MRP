@@ -42,3 +42,14 @@
 .tpl-sched { max-width: 100%; overflow-wrap: anywhere; }
 
 .pill.info { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-strong); }
+
+/* ---------- Licence + backup ---------- */
+.lic-hw-row { display: flex; gap: 8px; align-items: stretch; }
+.lic-hw-row input { flex: 1 1 auto; min-width: 0; letter-spacing: .04em; }
+.lic-key { width: 100%; resize: vertical; word-break: break-all; }
+.lic-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.lic-actions .hint { flex: 1 1 220px; min-width: 0; }
+.lic-state { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.lic-facts { margin: 0; }
+.lic-screen { margin-top: 4px; }
+.bk-list { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 13px; }

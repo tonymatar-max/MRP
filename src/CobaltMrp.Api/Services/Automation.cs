@@ -417,15 +417,22 @@ public sealed class ScheduleTicker(SettingsService settings, AutomationState sta
     }
 }
 
-public sealed class ScheduledRunService(ScheduleTicker ticker, ILogger<ScheduledRunService> log) : BackgroundService
+public sealed class ScheduledRunService(ScheduleTicker ticker, ILogger<ScheduledRunService> log, CobaltMrp.Api.Licensing.ILicenseService license) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // Give the host a moment to finish starting, then look every 30 seconds.
         try { await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken); } catch (OperationCanceledException) { return; }
+        var warned = false;
         while (!stoppingToken.IsCancellationRequested)
         {
-            try { await ticker.TickAsync(stoppingToken); }
+            try
+            {
+                // Unlicensed: no planned runs start (the schedule state is left untouched, so nothing is lost or repeated
+                // once a key is entered). Logged once per lapse, never an error.
+                if (license.IsValid()) { warned = false; await ticker.TickAsync(stoppingToken); }
+                else if (!warned) { warned = true; log.LogWarning("Scheduled runs are paused: Cobalt MRP is not licensed. Enter a licence key under Settings > Licence."); }
+            }
             catch (OperationCanceledException) { break; }
             catch (Exception ex) { log.LogError(ex, "The schedule check failed"); }
             try { await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken); } catch (OperationCanceledException) { break; }

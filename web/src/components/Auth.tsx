@@ -1,9 +1,10 @@
 import { createContext, FormEvent, ReactNode, useContext, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, setUnauthorizedHandler } from '../api/client';
-import type { AuthStatus, AuthUser } from '../api/types';
+import { api, setLicenseRequiredHandler, setUnauthorizedHandler } from '../api/client';
+import type { AuthStatus, AuthUser, LicenseStatus } from '../api/types';
 import { BrandMark, Loading } from './ui';
 import { LangSwitch, useT } from '../i18n';
+import { LicenceForm, LicencePill } from './Licence';
 
 interface AuthCtx {
   user: AuthUser;
@@ -122,12 +123,50 @@ function LoginPage({ onDone }: { onDone: (u: AuthUser) => void }) {
   );
 }
 
+/**
+ * Full-page "Licence required": shown instead of the app whenever the server answers 402 (or reports no valid licence).
+ * Sign-in still works while unlicensed, so an administrator gets here, reads the hardware key and pastes the key.
+ * Anyone else is told to ask an administrator.
+ */
+function LicenseRequiredScreen({ user, signOut, onLicensed }: { user: AuthUser; signOut: () => void; onLicensed: (s: LicenseStatus) => void }) {
+  const q = useQuery({ queryKey: ['licence-screen'], queryFn: api.licenseStatus, staleTime: 0, gcTime: 0, retry: false });
+  const isAdmin = user.role === 'Admin';
+  const s = q.data;
+  return (
+    <AuthShell title="Licence required" intro="Cobalt MRP needs a valid licence for this server. Planning and settings are locked until one is entered.">
+      {q.isLoading && <Loading />}
+      {q.isError && (
+        <>
+          <div className="alert danger" role="alert">{(q.error as Error).message}</div>
+          <button type="button" className="btn lg auth-submit" onClick={() => q.refetch()}>Retry</button>
+        </>
+      )}
+      {s && (
+        <div className="form-stack lic-screen">
+          <div className="lic-state"><LicencePill s={s} /><span className="muted">{s.message}</span></div>
+          <LicenceForm status={s} canSave={isAdmin} onSaved={onLicensed} />
+          <div className="lic-actions">
+            <button type="button" className="btn" onClick={async () => { const r = await q.refetch(); if (r.data?.isValid) onLicensed(r.data); }}>Check again</button>
+            <button type="button" className="btn" onClick={signOut}>Sign out</button>
+          </div>
+        </div>
+      )}
+      {!s && !q.isLoading && !q.isError && <button type="button" className="btn" onClick={signOut}>Sign out</button>}
+    </AuthShell>
+  );
+}
+
 /** Resolves /auth/status and renders setup, login or the app. A 401 anywhere drops back to login. */
 export function AuthGate({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['auth'], queryFn: api.authStatus, retry: false, staleTime: Infinity });
+  // A 402 from ANY api call (the licence expired mid-session, or was never entered) blocks the whole app.
+  const [blocked, setBlocked] = useState(false);
+  const authed = !!q.data?.authenticated;
+  const gate = useQuery({ queryKey: ['licence-gate'], queryFn: api.licenseStatus, enabled: authed, retry: false, staleTime: Infinity });
 
   const reset = (status: AuthStatus) => {
+    setBlocked(false);
     // Drop every cached business query so nothing from a previous user leaks into the next session.
     qc.removeQueries({ predicate: (query) => query.queryKey[0] !== 'auth' });
     qc.setQueryData(['auth'], status);
@@ -135,11 +174,13 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setUnauthorizedHandler(() => reset(SIGNED_OUT));
-    return () => setUnauthorizedHandler(null);
+    setLicenseRequiredHandler(() => setBlocked(true));
+    return () => { setUnauthorizedHandler(null); setLicenseRequiredHandler(null); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qc]);
 
   const signedIn = (u: AuthUser) => {
+    setBlocked(false);
     qc.removeQueries({ predicate: (query) => query.queryKey[0] !== 'auth' });
     qc.setQueryData(['auth'], { setupRequired: false, authenticated: true, user: u } satisfies AuthStatus);
   };
@@ -159,5 +200,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const s = q.data!;
   if (s.setupRequired) return <SetupPage onDone={signedIn} />;
   if (!s.authenticated || !s.user) return <LoginPage onDone={signedIn} />;
+  if (gate.isLoading) return <div className="auth-page"><Loading label="Checking the licence…" /></div>;
+  if (blocked || gate.data?.isValid === false) {
+    const licensed = (status: LicenseStatus) => {
+      qc.removeQueries({ predicate: (query) => query.queryKey[0] !== 'auth' && query.queryKey[0] !== 'licence-gate' });
+      qc.setQueryData(['licence-gate'], status);
+      setBlocked(false);
+    };
+    return <LicenseRequiredScreen user={s.user} signOut={signOut} onLicensed={licensed} />;
+  }
   return <Ctx.Provider value={{ user: s.user, isAdmin: s.user.role === 'Admin', signOut }}>{children}</Ctx.Provider>;
 }

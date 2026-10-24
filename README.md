@@ -47,6 +47,15 @@ Settings > **AI** (Admin) turns on an assistant that explains a saved run. It us
 - **Privacy:** plan data returned by those lookups (item codes, quantities, dates, supplier codes) is sent to OpenRouter and the model provider you choose. No connection strings, settings, secrets or user passwords are sent. Each call is logged (user, run, model, token usage, tool names) without the key or the question text; 20 calls a minute per user.
 - Off by default; when off (or without a key) the buttons are hidden (administrators see an "Enable AI in Settings" hint). Details: `docs/ai-contract.md`.
 
+## Licence and scheduled backup
+**Licence (required).** Cobalt MRP is licensed per server. After a fresh install or a publish onto a new machine/folder the app shows a **Licence required** screen after sign-in until a key is entered (sign-in itself works; planning, settings and all other API calls answer 402).
+1. Sign in as an administrator (create the first one from the server's browser if none exists). Copy the **Hardware Key** shown on the screen (later: Settings > Licence).
+2. In the **Cobalt License Manager** (`C:\Claude\License`, `.\run.ps1`, http://localhost:5100) enter that key for the customer with product code **CobaltMRP**, choose an expiry, generate the key.
+3. Paste it into the Licence screen and **Save licence**. It is verified offline and stored in `data\license.json` (kept across publishes).
+The hardware key depends on the machine name **and the install folder**: moving `C:\CobaltMRP` or renaming the server invalidates the key and needs a new one. Expired = the same screen; backups and the licence page keep working. Scheduled MRP runs pause while unlicensed.
+
+**Scheduled backup** (Settings > Backup, Admin). Daily/weekly zip of `settings.json`, `users.json`, `automation-state.json`, `backup-schedule.json`, `license.json` and the encryption key ring `data\keys\*` into a folder (default `%ProgramData%\Cobalt\MRP\Backups\Scheduled`), keeping the newest N, with catch-up after downtime, Run now and Download now. **Planned runs, forecasts and master-data overrides live in the SQL database and are not in this backup: back that database up with SQL Server.** There is no restore button: stop the service, copy the files back into `data\` (with `keys\`), start it, on the same server. Details: `docs/licence-and-backup-contract.md`.
+
 ## Security model
 - Sign-in is cookie based; roles **Admin** (settings, users, release anything to B1, Execute, push to SAP B1), **Buyer** (a planner who can also release **purchase orders and purchase requests**; the server refuses a release that contains production orders or transfers) and **Planner** (run MRP, view, edit master data and forecasts; cannot release).
 - Passwords and raw connection strings are encrypted at rest (ASP.NET DataProtection, keys in `data\keys`, DPAPI machine scope) and are never returned by the API; saving with a blank password keeps the stored one.

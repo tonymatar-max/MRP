@@ -13,7 +13,9 @@ import type {
   MasterSupplierPage, MasterSupplierQuery, MasterSupplierRow, RunCriteria, RunPreview, SupplierLookup,
   PreviewDetails, PreviewDetailsRequest,
   AiAskResponse, AiModelsResult, AiSettings, AiStatus, AiSummaryResponse, AiTurn,
+  BackupRunResult, BackupSettings, BackupView, LicenseStatus,
 } from './types';
+import * as mlc from '../mocks/licence';
 import * as mock from '../mocks/data';
 import * as adm from '../mocks/admin';
 import * as msl from '../mocks/saplog';
@@ -39,6 +41,15 @@ export class ApiError extends Error {
 let onUnauthorized: (() => void) | null = null;
 export const setUnauthorizedHandler = (fn: (() => void) | null) => { onUnauthorized = fn; };
 
+// Called when an API call answers 402 {licenseRequired:true}: the whole app switches to the Licence screen.
+// Sign-in and licence/backup calls are never 402, so they never trigger it.
+let onLicenseRequired: ((message: string) => void) | null = null;
+export const setLicenseRequiredHandler = (fn: ((message: string) => void) | null) => { onLicenseRequired = fn; };
+const isLicenseGate = (status: number, text: string, path: string): boolean => {
+  if (status !== 402 || path.startsWith('/auth/')) return false;
+  try { return JSON.parse(text)?.licenseRequired === true; } catch { return false; }
+};
+
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     credentials: 'same-origin',
@@ -54,6 +65,7 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
       else if (j && typeof j.title === 'string') message = j.title;
     } catch { /* not JSON */ }
     if (res.status === 401 && !path.startsWith('/auth/')) onUnauthorized?.();
+    if (isLicenseGate(res.status, text, path)) onLicenseRequired?.(message);
     throw new ApiError(res.status, message || `${res.status} ${res.statusText}`);
   }
   if (res.status === 204) return undefined as T;
@@ -113,6 +125,7 @@ export const api = {
       let message = text;
       try { const j = JSON.parse(text); if (j && typeof j.message === 'string') message = j.message; } catch { /* not JSON */ }
       if (res.status === 401) onUnauthorized?.();
+      if (isLicenseGate(res.status, text, '/runs/preview/details/export')) onLicenseRequired?.(message);
       throw new ApiError(res.status, message || `${res.status} ${res.statusText}`);
     }
     const cd = res.headers.get('Content-Disposition') ?? '';
@@ -187,6 +200,43 @@ export const api = {
   async putMasterSupplier(cardCode: string, body: { leadTimeDays: number | null; notes: string }): Promise<MasterSupplierRow> {
     if (USE_MOCK) return mocked(() => md.putSupplier(cardCode, body), 200);
     return put<MasterSupplierRow>(`/masterdata/suppliers/${encodeURIComponent(cardCode)}`, body);
+  },
+
+  // ----- licence + scheduled backup (Admin; the server never licence-gates these) -----
+  async licenseStatus(): Promise<LicenseStatus> {
+    if (USE_MOCK) return mocked(() => mlc.licenseStatus(), 150, true);
+    return http<LicenseStatus>('/admin/license');
+  },
+  async saveLicense(licenseKey: string): Promise<LicenseStatus> {
+    if (USE_MOCK) return mocked(() => mlc.saveLicense(licenseKey), 300);
+    return post<LicenseStatus>('/admin/license', { licenseKey });
+  },
+  async backupView(): Promise<BackupView> {
+    if (USE_MOCK) return mocked(() => mlc.backupView(), 200);
+    return http<BackupView>('/admin/backup/schedule');
+  },
+  async saveBackupSchedule(s: BackupSettings): Promise<BackupView> {
+    if (USE_MOCK) return mocked(() => mlc.saveBackup(s), 250);
+    return post<BackupView>('/admin/backup/schedule', s);
+  },
+  async runBackup(): Promise<{ result: BackupRunResult; view: BackupView }> {
+    if (USE_MOCK) return mocked(() => mlc.runBackup(), 500);
+    return post<{ result: BackupRunResult; view: BackupView }>('/admin/backup/run');
+  },
+  /** The backup zip right now, for the browser to save. */
+  async downloadBackup(): Promise<{ blob: Blob; filename: string }> {
+    if (USE_MOCK) { await delay(250); return { blob: new Blob(['mock backup'], { type: 'application/zip' }), filename: 'cobalt-mrp-backup-mock.zip' }; }
+    const res = await fetch(`${API_BASE}/admin/backup/download`, { credentials: 'same-origin' });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      let message = text;
+      try { const j = JSON.parse(text); if (j && typeof j.message === 'string') message = j.message; } catch { /* not JSON */ }
+      if (res.status === 401) onUnauthorized?.();
+      throw new ApiError(res.status, message || `${res.status} ${res.statusText}`);
+    }
+    const cd = res.headers.get('Content-Disposition') ?? '';
+    const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd);
+    return { blob: await res.blob(), filename: m ? decodeURIComponent(m[1]) : 'cobalt-mrp-backup.zip' };
   },
 
   // ----- auth -----

@@ -484,3 +484,32 @@ export interface AutomationStatus {
   lastNotice: { at: string | null; ok: boolean | null; message: string | null; newExceptions: number };
 }
 export interface ScheduledOutcome { ok: boolean; message: string; runId: string | null }
+
+// ---------- Licence + scheduled backup (Admin; never licence-gated) ----------
+export type LicenseStateName = 'Valid' | 'NotLicensed' | 'Malformed' | 'BadSignature' | 'WrongProduct' | 'WrongMachine' | 'Expired';
+/** GET /admin/license (open: the hardware key must be readable while unlicensed). Never contains the licence key. */
+export interface LicenseStatus {
+  productCode: string;
+  hardwareKey: string;
+  state: LicenseStateName;
+  isValid: boolean;
+  licenseKeySet: boolean;
+  expiresOn: string | null;
+  customer: string | null;
+  maxSeats: number | null;
+  message: string;
+}
+export interface BackupSettings { enabled: boolean; frequency: 'daily' | 'weekly'; time: string; dayOfWeek: number; folder: string; keepLast: number }
+export interface BackupFileInfo { name: string; sizeBytes: number; createdUtc: string }
+export interface BackupRunResult { startedAtUtc: string; finishedAtUtc: string; trigger: string; success: boolean; file: string; sizeBytes: number; pruned: number; error: string | null }
+export interface BackupView {
+  settings: BackupSettings;
+  folder: string;
+  defaultFolder: string;
+  dataFolder: string;
+  contents: string[];
+  nextRunLocal: string | null;
+  running: boolean;
+  last: BackupRunResult | null;
+  backups: BackupFileInfo[];
+}

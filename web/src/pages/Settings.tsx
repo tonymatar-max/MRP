@@ -9,10 +9,12 @@ import type {
 } from '../api/types';
 import { useAuth } from '../components/Auth';
 import { PriorityControl } from '../components/PriorityControl';
+import { LicencePanel } from '../components/Licence';
+import { BackupPanel } from '../components/BackupPanel';
 import { normaliseSettings } from '../api/normalise';
 import { Dialog, ErrorState, Loading, PageHeader, Pill } from '../components/ui';
 
-type TabId = 'cobalt' | 'b1' | 'sl' | 'planning' | 'automation' | 'ai' | 'users';
+type TabId = 'cobalt' | 'b1' | 'sl' | 'planning' | 'automation' | 'ai' | 'users' | 'licence' | 'backup';
 const TABS: { id: TabId; label: string }[] = [
   { id: 'cobalt', label: 'Cobalt database' },
   { id: 'b1', label: 'SAP B1 database' },
@@ -21,7 +23,11 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'automation', label: 'Automation' },
   { id: 'ai', label: 'AI' },
   { id: 'users', label: 'Users' },
+  { id: 'licence', label: 'Licence' },
+  { id: 'backup', label: 'Backup' },
 ];
+// These tabs save on their own (not through "Save settings"), so the unsaved-changes bar is hidden on them.
+const OWN_SAVE: TabId[] = ['users', 'licence', 'backup'];
 
 // ---------- a section that fails to render must not blank the whole page ----------
 class SectionBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -839,13 +845,13 @@ function SettingsEditor({ initial }: { initial: AppSettings }) {
       <PageHeader
         crumb="Configuration"
         title="Settings"
-        actions={
+        actions={OWN_SAVE.includes(tab) ? undefined : (
           <>
             {dirty ? <span className="pill warn"><span className="dot" />Unsaved changes</span> : <span className="pill ok"><span className="dot" />All changes saved</span>}
             <button type="button" className="btn" disabled={!dirty || save.isPending} onClick={discard}>Discard</button>
             <button type="button" className="btn primary" disabled={!dirty || save.isPending} onClick={doSave}>{save.isPending ? 'Saving…' : 'Save settings'}</button>
           </>
-        }
+        )}
       />
       <div className="page settings-page">
         <div className="tabs" role="tablist" aria-label="Settings sections">
@@ -864,10 +870,12 @@ function SettingsEditor({ initial }: { initial: AppSettings }) {
           {tab === 'automation' && <AutomationSection schedules={draft.schedules} notifications={draft.notifications} savedIds={savedIds} onSchedules={(v) => setDraft({ ...draft, schedules: v })} onNotifications={(v) => setDraft({ ...draft, notifications: v })} />}
           {tab === 'ai' && <AiSection value={draft.ai} onChange={(v) => setDraft({ ...draft, ai: v })} />}
           {tab === 'users' && <UsersTab />}
+          {tab === 'licence' && <LicencePanel />}
+          {tab === 'backup' && <BackupPanel />}
 
           </SectionBoundary>
         </div>
-        {tab !== 'users' && <p className="muted">Passwords are never sent back by the server and are not kept in this browser. Frontend: API base <span className="mono">{API_BASE}</span>, {USE_MOCK ? 'mock (offline) mode' : 'live API'}.</p>}
+        {!OWN_SAVE.includes(tab) && <p className="muted">Passwords are never sent back by the server and are not kept in this browser. Frontend: API base <span className="mono">{API_BASE}</span>, {USE_MOCK ? 'mock (offline) mode' : 'live API'}.</p>}
       </div>
       {toast && <div className={`toast ${toast.ok ? '' : 'error'}`} role="status">{toast.text}</div>}
     </>

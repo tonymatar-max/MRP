@@ -1,6 +1,8 @@
 using CobaltMrp.Api.Ai;
 using CobaltMrp.Api.Api;
 using CobaltMrp.Api.Auth;
+using CobaltMrp.Api.Backup;
+using CobaltMrp.Api.Licensing;
 using CobaltMrp.Api.Services;
 using CobaltMrp.Api.Settings;
 using CobaltMrp.Data;
@@ -32,6 +34,22 @@ var dp = builder.Services.AddDataProtection()
     .SetApplicationName("CobaltMRP")
     .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(dataDir, "keys")));
 if (OperatingSystem.IsWindows()) dp.ProtectKeysWithDpapi(protectToLocalMachine: true);
+
+// Licence (RSA-signed, machine-bound; license.json lives in the data folder so a republish keeps it) and scheduled
+// backup. The verification key is the embedded public key; ONLY in the Development environment can the
+// COBALT_LICENSE_TEST_PUBLIC_KEY variable swap it (automated tests). Never from settings.json or appsettings.
+builder.Services.AddSingleton<ILicenseService>(sp =>
+{
+    var env = sp.GetRequiredService<IHostEnvironment>();
+    var testKey = Environment.GetEnvironmentVariable(LicenseDefaults.TestKeyVariable);
+    var key = LicenseDefaults.ResolvePublicKey(env.IsDevelopment(), testKey);
+    var log = sp.GetRequiredService<ILoggerFactory>().CreateLogger<LicenseService>();
+    if (key != LicenseDefaults.PublicKeySpki) log.LogWarning("DEVELOPMENT: licence verification uses a test public key from {Variable}.", LicenseDefaults.TestKeyVariable);
+    return new LicenseService(env.ContentRootPath, dataDir, log, key);
+});
+builder.Services.AddSingleton(new BackupPaths(builder.Environment.ContentRootPath, dataDir));
+builder.Services.AddSingleton<BackupRunner>();
+builder.Services.AddHostedService<BackupScheduleService>();
 
 builder.Services.AddSingleton<SecretProtector>();
 builder.Services.AddSingleton(sp => new SettingsService(
@@ -163,11 +181,15 @@ if (app.Environment.IsDevelopment())
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
+app.UseLicenseGate();      // 402 on every /api call until licensed, except sign-in, licence and backup endpoints
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapAuth();
 app.MapSettings();
+var admin = app.MapGroup("/api/admin");
+admin.MapLicense();        // GET open (hardware key), POST Admin
+admin.MapBackup();         // Admin only, never licence-gated
 var api = app.MapGroup("/api").RequireAuthorization();
 api.MapRuns();
 api.MapAi();
