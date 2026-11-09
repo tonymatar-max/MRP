@@ -10,6 +10,7 @@ import { ThemeToggle } from './components/theme';
 import { LangSwitch, useT } from './i18n';
 import Calendar from './pages/Calendar';
 import Capacity from './pages/Capacity';
+import Compare from './pages/Compare';
 import Dashboard from './pages/Dashboard';
 import Exceptions from './pages/Exceptions';
 import Forecasts from './pages/Forecasts';
@@ -24,6 +25,7 @@ const NAV: { to: string; label: string; end?: boolean; adminOnly?: boolean; grou
   { to: '/exceptions', label: 'Exceptions', group: 'Planning' },
   { to: '/capacity', label: 'Capacity (CRP)', group: 'Planning' },
   { to: '/calendar', label: 'Calendar', group: 'Planning' },
+  { to: '/compare', label: 'Compare runs', group: 'Planning' },
   { to: '/master-data', label: 'Master data', group: 'Data' },
   { to: '/forecasts', label: 'Forecasts', group: 'Data' },
   { to: '/sap-log', label: 'SAP push log', group: 'Data' },
@@ -117,6 +119,7 @@ function Shell() {
             <Route path="/exceptions" element={<Exceptions />} />
             <Route path="/capacity" element={<Capacity />} />
             <Route path="/calendar" element={<Calendar />} />
+            <Route path="/compare" element={<Compare />} />
             <Route path="/master-data" element={<MasterData />} />
             <Route path="/forecasts" element={<Forecasts />} />
             <Route path="/sap-log" element={<SapLog />} />
